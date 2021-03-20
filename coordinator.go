@@ -171,8 +171,7 @@ func ParseG(ctx context.Context, val string) *G {
 
 func (c *WorkerCoordinator) leaderCamp(ctx context.Context) {
 	/*
-		目前leader是存在split brain问题的：
-		当前leader因为gc或对外网络不通，其余节点竞争出新leader，上个leader问题恢复
+		split brain问题:
 
 		下面是etcd的解决方案：
 		https://github.com/etcd-io/etcd/blob/master/Documentation/learning/why.md
@@ -188,7 +187,7 @@ func (c *WorkerCoordinator) leaderCamp(ctx context.Context) {
 		https://www.projectcalico.org/using-etcd-for-elections/
 		https://cloud.tencent.com/developer/article/1458456
 
-		rmf解决方案：
+		lrmf解决方案：
 		利用etcd的lock机制达到在ttl内互斥访问存储的目的，rmf的leader作为coordinator存在，leader通过写入g达到触发rb的目的，所以该lock
 		的目的是保证rb周期内的互斥写入，互斥写入能保证rb最基本的正确性，但是多个leader导致rb重复的问题，需要问题leader发现多leader时下放弃写入，重新参与竞争leader
 
@@ -201,72 +200,81 @@ func (c *WorkerCoordinator) leaderCamp(ctx context.Context) {
 	defer c.gracefulWG.Done()
 
 	for {
+	tryCampaign:
 		select {
 		case <-ctx.Done():
-			Logger.Printf("leaderCamp exit")
+			Logger.Printf("leaderCamp exit, when tryCampaign")
 			return
 		default:
+		}
 
-		tryCampaign:
-			s, e, err := c.etcdWrapper.campaign(ctx, defaultSessionTimeout)
-			if err != nil {
-				Logger.Printf("FAILED to campaign leader, err %+v", err)
+		// 有无限keepalive的保证，所以一般情况下，leader不会更改，重启的时候可能会导致leader重新选举
+		session, err := concurrency.NewSession(c.etcdWrapper.etcdClientV3, concurrency.WithTTL(defaultSessionTimeout))
+		if err != nil {
+			Logger.Printf("err %+v", err)
+			time.Sleep(defaultOpWaitTimeout)
+			goto tryCampaign
+		}
 
-				select {
-				case <-ctx.Done():
-					Logger.Printf("leaderCamp exit")
-					return
-				default:
-				}
+		election := concurrency.NewElection(session, c.etcdWrapper.nodeRbLeader())
+		if err := election.Campaign(ctx, c.instanceId); err != nil {
+			Logger.Printf("err %+v", err)
+			time.Sleep(defaultOpWaitTimeout)
+			goto tryCampaign
+		}
 
-				time.Sleep(defaultOpWaitTimeout)
-				goto tryCampaign
-			}
+		Logger.Printf("Successfully campaign for current instance %s", c.instanceId)
 
-			Logger.Printf("Successfully campaign for current instance %s", c.instanceId)
+		// 防止leaderHandleRb到watchHb之间加入/删除的instance被漏掉，这里先取到hb节点的revision
+	fetchStartRevision:
+		select {
+		case <-ctx.Done():
+			Logger.Printf("leaderCamp exit, when fetchStartRevision")
+			return
+		default:
+		}
 
-			// 防止leaderHandleRb到watchHb之间加入/删除的instance被漏掉，这里先取到hb节点的revision
-			resp, err := c.etcdWrapper.get(ctx, c.etcdWrapper.nodeHb(), []clientv3.OpOption{clientv3.WithPrefix()})
-			if err != nil {
-				Logger.Printf("err %+v", err)
-				time.Sleep(300 * time.Millisecond)
-				goto tryCampaign
-			}
+		resp, err := c.etcdWrapper.get(ctx, c.etcdWrapper.nodeHb(), []clientv3.OpOption{clientv3.WithPrefix()})
+		if err != nil {
+			Logger.Printf("err %+v", err)
+			time.Sleep(defaultOpWaitTimeout)
+			goto fetchStartRevision
+		}
+		startRevision := resp.Header.Revision
 
-			// 再次调用campaign会以新的身份block，所以一定要是s.Done()
-		tryTriggerRb:
-			select {
-			case <-s.Done():
-				Logger.Printf("leader session done, tryCampaign again")
-				goto tryCampaign
-			default:
-				Logger.Printf("Unexpected err happened, tryTriggerRb again")
-			}
+		// 再次调用campaign会以新的身份block，所以一定要是s.Done()
+	tryTriggerRb:
+		select {
+		case <-session.Done():
+			Logger.Printf("leader session done, tryCampaign again")
+			goto tryCampaign
+		default:
+			Logger.Printf("Unexpected err happened, tryTriggerRb again")
+		}
 
-			if err := c.tryTriggerRb(ctx); err != nil {
-				Logger.Printf("err %+v", err)
-				time.Sleep(300 * time.Millisecond)
-				goto tryTriggerRb
-			}
+		if err := c.tryTriggerRb(ctx); err != nil {
+			Logger.Printf("err %+v", err)
+			time.Sleep(defaultOpWaitTimeout)
+			goto tryTriggerRb
+		}
 
-			// 开启rb监管goroutine
-			if err := c.leaderHandleRb(ctx); err != nil {
-				Logger.Printf("err: %+v", err)
-				time.Sleep(300 * time.Millisecond)
-				goto tryTriggerRb
-			} else {
-				Logger.Printf("leader handle rb completed g [%s]", c.newG.String())
-			}
+		// 开启rb监管goroutine
+		if err := c.leaderHandleRb(ctx); err != nil {
+			Logger.Printf("err: %+v", err)
+			time.Sleep(defaultOpWaitTimeout)
+			goto tryTriggerRb
+		} else {
+			Logger.Printf("leader handle rb completed g [%s]", c.newG.String())
+		}
 
-			// leader需要检查rb，监听hb
-			if err := c.watchHb(ctx, resp.Header.Revision, s.Done()); err != nil {
-				Logger.Printf("Leader watch hb err: %+v", err)
-			}
+		// leader需要检查rb，监听hb
+		if err := c.watchHb(ctx, startRevision, session.Done()); err != nil {
+			Logger.Printf("Leader watch hb err: %+v", err)
+		}
 
-			// watchHb会block在s.Done()，执行到这里可以触发一次清理
-			if err := e.Resign(ctx); err != nil {
-				Logger.Printf("FAILED to resign, err: %+v", err)
-			}
+		// watchHb会block在s.Done()，执行到这里可以触发一次清理
+		if err := election.Resign(ctx); err != nil {
+			Logger.Printf("FAILED to resign, err: %+v", err)
 		}
 	}
 }

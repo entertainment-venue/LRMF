@@ -2,7 +2,6 @@ package lrmf
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -85,7 +84,7 @@ func (p *goroutinePool) Add(ctx context.Context, task Task, doFunc DoFunc) {
 	k := task.Key(ctx)
 	_, ok := p.kAndStopper[k]
 	if ok {
-		fmt.Println("FAILED to add k=%s, already exist", k)
+		Logger.Printf("FAILED to add k=%s, already exist", k)
 		return
 	}
 

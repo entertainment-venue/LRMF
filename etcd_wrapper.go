@@ -347,19 +347,3 @@ func (w *etcdWrapper) acquireLock(ctx context.Context, ttl int) (locker sync.Loc
 	locker.Lock()
 	return locker, session.Lease(), nil
 }
-
-func (w *etcdWrapper) campaign(ctx context.Context, ttl int) (*concurrency.Session, *concurrency.Election, error) {
-	// 有无限keepalive的保证，所以一般情况下，leader不会更改，重启的时候可能会导致leader重新选举
-	s, err := concurrency.NewSession(w.etcdClientV3, concurrency.WithTTL(ttl))
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "")
-	}
-
-	e := concurrency.NewElection(s, w.nodeRbLeader())
-	if err := e.Campaign(ctx, w.coordinator.instanceId); err != nil {
-		return nil, nil, errors.Wrap(err, "")
-	}
-
-	Logger.Printf("Election success for %s", w.coordinator.instanceId)
-	return s, e, nil
-}

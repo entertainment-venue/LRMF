@@ -16,3 +16,8 @@ require (
 	google.golang.org/genproto v0.0.0-20210211221406-4ccc9a5e4183 // indirect
 	google.golang.org/grpc v1.35.0 // indirect
 )
+
+replace github.com/coreos/go-systemd => github.com/coreos/go-systemd/v22 v22.1.0
+
+// https://blog.csdn.net/qq_43442524/article/details/104997539
+replace google.golang.org/grpc => google.golang.org/grpc v1.26.0

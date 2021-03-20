@@ -12,11 +12,20 @@ import (
 
 func Test_leaderCampaign(t *testing.T) {
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
 	coordinator.curG = &G{Id: 1}
+
+	config := &testTaskProvider{}
+	coordinator.taskProvider = config
+
+	go func() {
+		coordinator.leaderCamp(context.TODO())
+	}()
+
+	time.Sleep(3 * time.Second)
 
 	coordinator.leaderCamp(context.TODO())
 }
