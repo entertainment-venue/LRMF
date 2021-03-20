@@ -55,13 +55,13 @@ func Test_createAndGet(t *testing.T) {
 
 	// etcd没有foo
 	_ = wrapper.del(context.TODO(), "foo")
-	value, _, err = wrapper.createAndGet(context.TODO(), "foo", "bar", -1)
+	value, err = wrapper.createAndGet(context.TODO(), "foo", "bar", clientv3.NoLease)
 	skipErr(t, err)
 
 	// etcd有foo
 	err = wrapper.put(context.TODO(), "foo", "bar")
 	skipErr(t, err)
-	value, _, err = wrapper.createAndGet(context.TODO(), "foo", "bar", -1)
+	value, err = wrapper.createAndGet(context.TODO(), "foo", "bar", clientv3.NoLease)
 	if err != errNodeExist {
 		t.Errorf("expect errNodeExist")
 		t.SkipNow()
@@ -69,7 +69,7 @@ func Test_createAndGet(t *testing.T) {
 
 	// ttl
 	_ = wrapper.del(context.TODO(), "foo")
-	value, _, err = wrapper.createAndGet(context.TODO(), "foo", "bar", 5)
+	value, err = wrapper.createAndGet(context.TODO(), "foo", "bar", 5)
 	skipErr(t, err)
 	getResp, gerr := wrapper.get(context.TODO(), "foo", nil)
 	skipErr(t, gerr)

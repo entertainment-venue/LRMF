@@ -81,6 +81,14 @@ type WorkerCoordinator struct {
 	leaseID clientv3.LeaseID // rb过程中leader需要利用leaseID防止split brain，作用在state节点
 
 	newG *G // 4 leader
+
+	// 利用etcd中lease机制管理与特定instance相关的任务节点，一旦instance因为网络或者自身原因不能继续保证lease的存活，与该lease
+	// 相关的任务节点都会被释放。
+	// 任务与instance存活相关，instance存活的标记在etcd中是通过hb节点保证的，所以和hb使用同样的lease。
+	// 注意：
+	// 1. instance之于etcd不是存活状态，不代表instance所处的进程已经发起被分配的工作，lrmf作为辅助库不能干扰接入应用的行为。
+	// 2. kafka在该场景下，broker是知道某个instance不是存活状态，可以禁止它继续拉取消息/标记offset，但是lrmf作为第三方的库，做不到。
+	instanceLeaseID clientv3.LeaseID
 }
 
 func (c *WorkerCoordinator) JoinGroup(ctx context.Context) error {
@@ -433,17 +441,17 @@ func (c *WorkerCoordinator) staticMembership(ctx context.Context) (int64, error)
 	}
 
 	assignNode := c.etcdWrapper.nodeGAssignInstanceId(g.Id, c.instanceId)
-	gresp, gerr := c.etcdWrapper.get(ctx, assignNode, nil)
-	if gerr != nil {
+	gResp, gErr := c.etcdWrapper.get(ctx, assignNode, nil)
+	if gErr != nil {
 		return -1, errors.Wrapf(err, "FAILED to get %s, err %+v", assignNode, err)
 	}
-	if gresp.Count == 0 {
+	if gResp.Count == 0 {
 		// 先取g，再取state为idle，证明g是稳定版，但发现没有assign节点，可能g已经被新rb，清理掉，从下一个rb尝试加入即可
 		rev++
 		return rev, nil
 	}
 
-	assignment := string(gresp.Kvs[0].Value)
+	assignment := string(gResp.Kvs[0].Value)
 	if err := c.assign(ctx, assignment); err != nil {
 		// 这里可能是因为正在rb，导致部分assign失败，会导致当前rb处理失败，进入下次rb
 		return -1, errors.Wrapf(err, "FAILED to assign %s, err: %+v", assignment, err)
@@ -655,7 +663,7 @@ joinOp:
 		}
 
 		// 本地revoke结束，标记当前instance revoke完结
-		curValue, _, err := c.etcdWrapper.createAndGet(ctx, joinNode, StateRevoke.String(), -1)
+		curValue, err := c.etcdWrapper.createAndGet(ctx, joinNode, StateRevoke.String(), clientv3.NoLease)
 		if err != nil {
 			if err != errNodeExist {
 				Logger.Printf("FAILED to createAndGet %s, unexpected err %+v", joinNode, err)
@@ -885,39 +893,42 @@ func (c *WorkerCoordinator) assign(ctx context.Context, assignment string) error
 	// 增加goto，可以引入retry功能
 	assignedTasks, err := c.taskHub.OnAssigned(ctx, assignment)
 	if err != nil {
-		return errors.Wrapf(err, "FAILED to revoke %s, because err %s", assignment, err)
+		return errors.Wrapf(err, "FAILED to assign %s, because err %s", assignment, err)
 	}
 	if len(assignedTasks) == 0 {
 		Logger.Print("No assigned tasks")
 		return nil
 	}
+	Logger.Print("Successfully assign tasks, finish OnAssigned")
 
 	for _, task := range assignedTasks {
 		node := c.etcdWrapper.nodeTaskId(task.Key(ctx))
 
-	retry:
-		taskOwner, _, err := c.etcdWrapper.createAndGet(ctx, node, c.instanceId, -1)
-		if err != nil {
-			if err != errNodeExist {
-				return errors.Wrapf(err, "FAILED to createAndGet node %s, err %+v", node, err)
-			}
-
-			if taskOwner != c.instanceId {
-				if err := c.canIgnoreInstance(ctx, taskOwner); err != nil {
-					// FIXME 人工介入
-					return errors.Wrapf(err, "node %s already be taken, err %+v", node, err)
-				}
-				if err := c.etcdWrapper.del(ctx, node); err != nil {
-					return errors.Wrap(err, "")
-				}
-				goto retry
-			}
-
-			// value就是当前的instance认为成功
+		// 上面的OnAssigned成功，表示任务已经分配下去，这里保证etcd中新增task节点。
+	occupyTask:
+		// 这里用leaseID，保证instance down掉的场景，自己的任务etcd节点也会被清除掉，减少下面occupyTask冲突的概率。
+		taskOwnerInstance, err := c.etcdWrapper.createAndGet(ctx, node, c.instanceId, c.instanceLeaseID)
+		if err == nil {
+			Logger.Printf("Successfully bind %s to instance %s", node, c.instanceId)
+			continue
 		}
-		Logger.Printf("Successfully assign %s to instance %s", task.Key(ctx), c.instanceId)
+
+		if err != errNodeExist {
+			Logger.Printf("FAILED to createAndGet node %s, err %+v", node, err)
+			goto occupyTask
+		}
+
+		if taskOwnerInstance != c.instanceId {
+			if err := c.canIgnoreInstance(ctx, taskOwnerInstance); err != nil {
+				return errors.Wrapf(err, "node %s already be taken, err %+v", node, err)
+			}
+			if err := c.etcdWrapper.del(ctx, node); err != nil {
+				return errors.Wrap(err, "")
+			}
+			goto occupyTask
+		}
 	}
-	Logger.Print("Successfully assign all tasks")
+	Logger.Print("Successfully assign tasks, finish etcd ops")
 	return nil
 }
 
@@ -1223,7 +1234,26 @@ func (c *WorkerCoordinator) instanceHb(ctx context.Context) {
 	b, _ := json.Marshal(hbData)
 
 keepaliveForever:
-	s, err := concurrency.NewSession(c.etcdWrapper.etcdClientV3, concurrency.WithTTL(int(defaultSessionTimeout)))
+	resp, err := c.etcdWrapper.etcdClientV3.Grant(ctx, int64(defaultSessionTimeout))
+	if err != nil {
+		Logger.Printf("FAILED to grant lease, err %s", err.Error())
+
+		select {
+		case <-ctx.Done():
+			Logger.Print("instanceHb exit")
+			return
+		default:
+		}
+
+		time.Sleep(defaultOpWaitTimeout)
+		goto keepaliveForever
+	}
+	c.instanceLeaseID = resp.ID
+
+	s, err := concurrency.NewSession(
+		c.etcdWrapper.etcdClientV3,
+		concurrency.WithTTL(int(defaultSessionTimeout)),
+		concurrency.WithLease(c.instanceLeaseID))
 	if err != nil {
 		Logger.Printf("FAILED to new session, err %s", err.Error())
 

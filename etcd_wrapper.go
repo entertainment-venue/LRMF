@@ -154,30 +154,15 @@ func (w *etcdWrapper) del(ctx context.Context, prefix string) error {
 	return nil
 }
 
-func (w *etcdWrapper) createAndGet(ctx context.Context, node string, value string, ttl int64) (string, clientv3.LeaseID, error) {
+func (w *etcdWrapper) createAndGet(ctx context.Context, node string, value string, leaseID clientv3.LeaseID) (string, error) {
 	// 创建的场景下，cmp只发生一次
 	cmp := clientv3.Compare(clientv3.CreateRevision(node), "=", 0)
 
-	var (
-		create clientv3.Op
-
-		leaseID clientv3.LeaseID
-	)
-	if ttl <= 0 {
+	var create clientv3.Op
+	if leaseID == clientv3.NoLease {
 		create = clientv3.OpPut(node, value)
 	} else {
-		timeoutCtx, cancel := context.WithTimeout(context.TODO(), defaultOpTimeout)
-		defer cancel()
-
-		// ttl最小5秒
-		resp, err := w.etcdClientV3.Grant(timeoutCtx, ttl)
-		if err != nil {
-			return "", leaseID, errors.Wrap(err, "")
-		}
-
-		leaseID = resp.ID
-
-		create = clientv3.OpPut(node, value, clientv3.WithLease(resp.ID))
+		create = clientv3.OpPut(node, value, clientv3.WithLease(leaseID))
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(context.TODO(), defaultOpTimeout)
@@ -186,16 +171,16 @@ func (w *etcdWrapper) createAndGet(ctx context.Context, node string, value strin
 	get := clientv3.OpGet(node)
 	resp, err := w.etcdClientV3.Txn(timeoutCtx).If(cmp).Then(create).Else(get).Commit()
 	if err != nil {
-		return "", leaseID, errors.Wrap(err, "")
+		return "", errors.Wrap(err, "")
 	}
 	if resp.Succeeded {
 		Logger.Printf("Successfully create node %s with value %s", node, value)
-		return value, leaseID, nil
+		return value, nil
 	}
 	// 创建失败，不需要再继续，业务认定自己是创建的场景，curValue不能走下面的compare and swap
 	curValue := string(resp.Responses[0].GetResponseRange().Kvs[0].Value)
 	Logger.Printf("FAILED to create node %s with value %s because node already exist", node, value)
-	return curValue, leaseID, errNodeExist
+	return curValue, errNodeExist
 }
 
 // https://etcd.io/docs/v3.4.0/learning/api/#transaction
@@ -258,7 +243,7 @@ func (w *etcdWrapper) incrementAndGet(ctx context.Context, node string) (int, er
 	}
 
 	if resp.Count == 0 {
-		if _, _, err := w.createAndGet(context.TODO(), node, "1", -1); err != nil {
+		if _, err := w.createAndGet(context.TODO(), node, "1", clientv3.NoLease); err != nil {
 			return -1, errors.Wrap(err, "")
 		}
 		return 1, nil
