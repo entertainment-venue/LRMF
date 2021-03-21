@@ -12,7 +12,7 @@ import (
 
 func Test_putAndget(t *testing.T) {
 	coordinator := &WorkerCoordinator{}
-	wrapper, err := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, err := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	if err != nil {
 		t.Errorf("%+v", err)
 		t.SkipNow()
@@ -45,7 +45,7 @@ func Test_putAndget(t *testing.T) {
 
 func Test_createAndGet(t *testing.T) {
 	coordinator := &WorkerCoordinator{}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 
 	var (
@@ -90,7 +90,7 @@ func Test_createAndGet(t *testing.T) {
 
 func Test_compareAndSwap(t *testing.T) {
 	coordinator := &WorkerCoordinator{}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 
 	var err error
@@ -133,7 +133,7 @@ func Test_compareAndSwap(t *testing.T) {
 
 func Test_getKVs(t *testing.T) {
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 
 	var err error
@@ -156,7 +156,7 @@ func Test_getKVs(t *testing.T) {
 
 func Test_incrementAndGet(t *testing.T) {
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 
 	var (
@@ -208,7 +208,7 @@ func Test_incrementAndGet(t *testing.T) {
 func Test_acquireLock(t *testing.T) {
 	// 检验leaseID是否是全局递增的
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 
 	var (

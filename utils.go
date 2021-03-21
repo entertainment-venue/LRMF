@@ -68,9 +68,9 @@ func (t *taskTest) Value(ctx context.Context) string {
 	return t.V
 }
 
-type assignmentParserTest struct{}
+type testAssignmentParser struct{}
 
-func (p *assignmentParserTest) Unmarshal(ctx context.Context, assignment string) ([]Task, error) {
+func (p *testAssignmentParser) Unmarshal(ctx context.Context, assignment string) ([]Task, error) {
 	var tasks []*taskTest
 	if err := json.Unmarshal([]byte(assignment), &tasks); err != nil {
 		return nil, errors.Wrapf(err, "FAILED to unmarshal assignment %s", assignment)
@@ -101,18 +101,21 @@ func (config *testTaskProvider) Tenancy() string {
 	return "default"
 }
 
-type workerTest struct{}
+type testWorker struct {
+	// 区分不同的instance
+	InstanceId string
+}
 
-func (w *workerTest) Revoke(ctx context.Context, tasks []Task) error {
+func (w *testWorker) Revoke(ctx context.Context, tasks []Task) error {
 	for _, task := range tasks {
-		Logger.Printf("Revoke task %s", task.Key(ctx))
+		Logger.Printf("instance %s revoke task %s", w.InstanceId, task.Key(ctx))
 	}
 	return nil
 }
 
-func (w *workerTest) Assign(ctx context.Context, tasks []Task) error {
+func (w *testWorker) Assign(ctx context.Context, tasks []Task) error {
 	for _, task := range tasks {
-		Logger.Printf("Assign task %s", task.Key(ctx))
+		Logger.Printf("instance %s assign task %s", w.InstanceId, task.Key(ctx))
 	}
 	return nil
 }

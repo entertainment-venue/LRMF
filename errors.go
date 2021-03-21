@@ -11,4 +11,6 @@ var (
 	errNotNodeExist          = errors.New("node not exist")
 	errNodeValueAlreadyExist = errors.New("node value already exist")
 	errNodeValueErr          = errors.New("node value not equal")
+
+	errClose = errors.New("context cancel")
 )

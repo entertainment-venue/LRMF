@@ -34,7 +34,7 @@ func Test_triggerRb(t *testing.T) {
 	clearData(t)
 
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
@@ -117,7 +117,7 @@ func Test_leaderHandleRb_idle2revoke(t *testing.T) {
 	clearData(t)
 
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
@@ -130,8 +130,8 @@ func Test_leaderHandleRb_idle2revoke(t *testing.T) {
 	// leader涉及到
 	coordinator.assignor = &ConsistentHashingAssignor{}
 
-	worker := &workerTest{}
-	assignmentParser := &assignmentParserTest{}
+	worker := &testWorker{}
+	assignmentParser := &testAssignmentParser{}
 	coordinator.taskHub = NewTaskHub(context.TODO(), worker, assignmentParser)
 
 	go func() {
@@ -157,7 +157,7 @@ func Test_leaderHandleRb_revoke2assign(t *testing.T) {
 	clearData(t)
 
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
@@ -170,8 +170,8 @@ func Test_leaderHandleRb_revoke2assign(t *testing.T) {
 	// leader涉及到
 	coordinator.assignor = &ConsistentHashingAssignor{}
 
-	worker := &workerTest{}
-	assignmentParser := &assignmentParserTest{}
+	worker := &testWorker{}
+	assignmentParser := &testAssignmentParser{}
 	coordinator.taskHub = NewTaskHub(context.TODO(), worker, assignmentParser)
 
 	go func() {
@@ -197,7 +197,7 @@ func Test_waitState(t *testing.T) {
 	clearData(t)
 
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
@@ -227,7 +227,7 @@ func Test_waitInstanceState(t *testing.T) {
 	clearData(t)
 
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
@@ -264,14 +264,14 @@ func Test_waitAdjustAssignment(t *testing.T) {
 
 func Test_watchG(t *testing.T) {
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
 	coordinator.curG = &G{Id: 1}
 
-	worker := &workerTest{}
-	assignmentParser := &assignmentParserTest{}
+	worker := &testWorker{}
+	assignmentParser := &testAssignmentParser{}
 	taskHub := NewTaskHub(context.TODO(), worker, assignmentParser)
 	coordinator.taskHub = taskHub
 
@@ -280,33 +280,36 @@ func Test_watchG(t *testing.T) {
 
 func Test_JoinGroup(t *testing.T) {
 
-	instanceId := "testInstance"
+	taskProvider := &testTaskProvider{}
+	assignmentParser := &testAssignmentParser{}
 
-	config := &testTaskProvider{}
-	worker := &workerTest{}
-	assignmentParser := &assignmentParserTest{}
-	taskHub := NewTaskHub(context.TODO(), worker, assignmentParser)
+	assignor := &StringOrderEvenlyAssignor{}
 
-	assignor := &ConsistentHashingAssignor{}
+	for i := 0; i < 3; i++ {
+		go func(i int) {
+			instanceId := fmt.Sprintf("testInstance_%d", i)
+			worker := &testWorker{InstanceId: instanceId}
+			taskHub := NewTaskHub(context.TODO(), worker, assignmentParser)
 
-	coordinator, err := StartWorkerCoordinator(
-		context.TODO(),
-		WithEtcdEndpoints([]string{"10.188.40.83:2379"}),
-		WithProtocol("foo"),
-		WithBiz("bar"),
-		WithInstanceId(instanceId),
-		WithTaskHub(taskHub),
-		WithTaskProvider(config),
-		WithAssignor(assignor))
-	if err != nil {
-		panic(err)
+			coordinator, err := StartWorkerCoordinator(
+				context.TODO(),
+				WithEtcdEndpoints([]string{"127.0.0.1:2379"}),
+				WithProtocol("foo"),
+				WithBiz("bar"),
+				WithInstanceId(instanceId),
+				WithTaskHub(taskHub),
+				WithTaskProvider(taskProvider),
+				WithAssignor(assignor))
+			if err != nil {
+				panic(err)
+			}
+
+			if i > 0 {
+				time.Sleep(time.Duration(i) * time.Second)
+				coordinator.Close(context.TODO())
+			}
+		}(i)
 	}
-
-	go func() {
-		time.Sleep(10 * time.Second)
-
-		coordinator.Close(context.TODO())
-	}()
 
 	ch := make(chan struct{})
 	<-ch
@@ -314,7 +317,7 @@ func Test_JoinGroup(t *testing.T) {
 
 func Test_tryDelExpiredG(t *testing.T) {
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
@@ -326,7 +329,7 @@ func Test_tryDelExpiredG(t *testing.T) {
 
 func Test_watchHb(t *testing.T) {
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
@@ -351,14 +354,14 @@ func Test_watchHb(t *testing.T) {
 
 func Test_tryStaticMembership(t *testing.T) {
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
 	coordinator.curG = &G{Id: 1}
 
-	worker := &workerTest{}
-	assignmentParser := &assignmentParserTest{}
+	worker := &testWorker{}
+	assignmentParser := &testAssignmentParser{}
 	taskHub := NewTaskHub(context.TODO(), worker, assignmentParser)
 	coordinator.taskHub = taskHub
 
@@ -367,7 +370,7 @@ func Test_tryStaticMembership(t *testing.T) {
 
 func Test_instanceHb(t *testing.T) {
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
@@ -378,7 +381,7 @@ func Test_instanceHb(t *testing.T) {
 
 func clearData(t *testing.T) {
 	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"10.188.40.83:2379"}, coordinator)
+	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"

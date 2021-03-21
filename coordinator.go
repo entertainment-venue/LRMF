@@ -248,8 +248,12 @@ func (c *WorkerCoordinator) leaderCamp(ctx context.Context) {
 		case <-session.Done():
 			Logger.Printf("leader session done, tryCampaign again")
 			goto tryCampaign
+		case <-ctx.Done():
+			if err := session.Close(); err != nil {
+				Logger.Printf("err %+v", err)
+			}
+			return
 		default:
-			Logger.Printf("Unexpected err happened, tryTriggerRb again")
 		}
 
 		if err := c.tryTriggerRb(ctx); err != nil {
@@ -501,31 +505,36 @@ func (c *WorkerCoordinator) handleRbEvent(ctx context.Context) {
 		revoke -> assign 两个阶段在全局必须串行
 	*/
 
-	if err := c.waitState(ctx, StateRevoke.String()); err != nil {
-		Logger.Printf("err %+v", err)
+	if err := c.waitState(ctx, StateRevoke.String()); err != nil && errors.Is(err, errClose) {
+		Logger.Printf("Unexpected err: %+v", err)
 		return
 	}
 	Logger.Printf("waitState success %d", StateRevoke)
 
-	if err := c.instanceHandleRb(ctx, StateRevoke.String()); err != nil {
-		Logger.Printf("err %+v", err)
+	if err := c.instanceHandleRb(ctx, StateRevoke.String()); err != nil && errors.Is(err, errClose) {
+		Logger.Printf("Unexpected err: %+v", err)
 		return
 	}
 	Logger.Printf("instanceHandleRb completed %d", StateRevoke)
 
-	if err := c.waitState(ctx, StateAssign.String()); err != nil {
-		Logger.Printf("err %+v", err)
+	if err := c.waitState(ctx, StateAssign.String()); err != nil && errors.Is(err, errClose) {
+		Logger.Printf("Unexpected err: %+v", err)
 		return
 	}
 	Logger.Printf("waitState success %d", StateAssign)
 
-	if err := c.instanceHandleRb(ctx, StateAssign.String()); err != nil {
-		Logger.Printf("err %+v", err)
+	if err := c.instanceHandleRb(ctx, StateAssign.String()); err != nil && errors.Is(err, errClose) {
+		Logger.Printf("Unexpected err: %+v", err)
 		return
 	}
 	Logger.Printf("instanceHandleRb completed %d", StateAssign)
 
-	if err := c.waitCompareAndSwap(ctx, c.curG, c.etcdWrapper.nodeGJoinInstance(c.curG.Id), StateAssign.String(), StateIdle.String()); err != nil {
+	if err := c.waitCompareAndSwap(
+		ctx,
+		c.curG,
+		c.etcdWrapper.nodeGJoinInstance(c.curG.Id),
+		StateAssign.String(),
+		StateIdle.String()); err != nil && errors.Is(err, errClose) {
 		Logger.Printf("FAILED to finish rb, unexpected err %+v", err)
 		return
 	}
@@ -582,8 +591,8 @@ func (c *WorkerCoordinator) leaderHandleRb(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 
-			Logger.Printf("leaderHandleRb exit")
-			return errors.Errorf("leaderHandleRb exit")
+			Logger.Printf("Instance %s leaderHandleRb exit", c.instanceId)
+			return errors.Wrap(errClose, "")
 
 		case <-time.After(defaultOpWaitTimeout):
 
@@ -592,12 +601,17 @@ func (c *WorkerCoordinator) leaderHandleRb(ctx context.Context) error {
 			case StateIdle:
 
 				// rb的state从idle变为revoke（表示g/join/gid/开始接收revoke），等待instance都变为revoke
-				if err := c.waitCompareAndSwap(ctx, c.newG, c.etcdWrapper.nodeRbState(), formatStateValue(StateIdle.String(), c.leaseID), formatStateValue(StateRevoke.String(), c.leaseID)); err != nil {
-					return errors.Wrapf(err, "Quit waitCompareAndSwap, from idle to revoke")
+				if err := c.waitCompareAndSwap(
+					ctx,
+					c.newG,
+					c.etcdWrapper.nodeRbState(),
+					formatStateValue(StateIdle.String(), c.leaseID),
+					formatStateValue(StateRevoke.String(), c.leaseID)); err != nil {
+					return err
 				}
 
 				if err := c.waitInstanceState(ctx, StateRevoke.String(), participant); err != nil {
-					return errors.Wrap(err, "Quit waitInstanceState when waiting revoke")
+					return err
 				}
 
 				state = StateRevoke
@@ -651,7 +665,8 @@ func (c *WorkerCoordinator) instanceHandleRb(ctx context.Context, curState strin
 joinOp:
 	select {
 	case <-ctx.Done():
-		return errors.New("instanceHandleRb exit when join revoke")
+		Logger.Printf("Instance %s instanceHandleRb exit when join revoke", c.instanceId)
+		return errors.Wrap(errClose, "")
 	default:
 		if !firstTry {
 			time.Sleep(defaultOpWaitTimeout)
@@ -759,8 +774,8 @@ tryWatch:
 	for {
 		select {
 		case <-ctx.Done():
-			err := errors.Errorf("FAILED to waitState on %s", target)
-			return errors.Wrap(err, "")
+			Logger.Printf("Instance %s goroutine exit when wait state %s", c.instanceId, target)
+			return errors.Wrap(errClose, "")
 		case wr := <-wch:
 			if err := wr.Err(); err != nil {
 				Logger.Printf("FAILED to waitState, err: %+v", err)
@@ -788,7 +803,8 @@ func (c *WorkerCoordinator) waitInstanceState(ctx context.Context, state string,
 wait:
 	select {
 	case <-ctx.Done():
-		return errors.Errorf("waitInstanceState exit when wait %s", state)
+		Logger.Printf("Instance %s waitInstanceState exit when wait %s", c.instanceId, state)
+		return errors.Wrap(errClose, "")
 	default:
 		if !firstTry {
 			time.Sleep(defaultOpWaitTimeout)
@@ -832,7 +848,12 @@ wait:
 	sort.Strings(participant)
 
 	if !reflect.DeepEqual(instanceIds, participant) {
-		Logger.Printf("Value not equal, new g's join instanceId %+v, participant %+v", instanceIds, participant)
+		Logger.Printf(
+			"Value not equal, new g(%d) joined instanceId %+v, participant %+v",
+			c.newG.Id,
+			instanceIds,
+			participant,
+		)
 		goto wait
 	}
 	return nil
@@ -843,7 +864,13 @@ func (c *WorkerCoordinator) waitCompareAndSwap(ctx context.Context, g *G, node s
 tryCompareAndSwap:
 	select {
 	case <-ctx.Done():
-		return errors.Errorf("waitCompareAndSwap exit, when change %s from %s to %s", node, curValue, newValue)
+		Logger.Printf(
+			"Instance %s waitCompareAndSwap exit, when change %s from %s to %s",
+			c.instanceId,
+			node,
+			curValue,
+			newValue)
+		return errors.Wrap(errClose, "")
 	default:
 		if !firstTry {
 			time.Sleep(defaultOpWaitTimeout)
@@ -907,7 +934,7 @@ func (c *WorkerCoordinator) assign(ctx context.Context, assignment string) error
 		Logger.Print("No assigned tasks")
 		return nil
 	}
-	Logger.Print("Successfully assign tasks, finish OnAssigned")
+	Logger.Printf("Instance %s successfully assign tasks, finish OnAssigned", c.instanceId)
 
 	for _, task := range assignedTasks {
 		node := c.etcdWrapper.nodeTaskId(task.Key(ctx))
@@ -928,7 +955,8 @@ func (c *WorkerCoordinator) assign(ctx context.Context, assignment string) error
 
 		if taskOwnerInstance != c.instanceId {
 			if err := c.canIgnoreInstance(ctx, taskOwnerInstance); err != nil {
-				return errors.Wrapf(err, "node %s already be taken, err %+v", node, err)
+				Logger.Printf("Unexpected err, node occupied by %s, %+v", taskOwnerInstance, err)
+				// 仍旧强行删除只是打印err，用于追查问题
 			}
 			if err := c.etcdWrapper.del(ctx, node); err != nil {
 				return errors.Wrap(err, "")
@@ -936,7 +964,7 @@ func (c *WorkerCoordinator) assign(ctx context.Context, assignment string) error
 			goto occupyTask
 		}
 	}
-	Logger.Print("Successfully assign tasks, finish etcd ops")
+	Logger.Printf("Instance %s successfully assign tasks, finish etcd ops", c.instanceId)
 	return nil
 }
 
@@ -960,10 +988,13 @@ func (c *WorkerCoordinator) canIgnoreInstance(ctx context.Context, instanceId st
 	}
 
 	// 在本次participant中，已经进入assign阶段，肯定revoke成功
-	for _, id := range c.curG.Participant {
-		if id == instanceId {
-			Logger.Printf("Instance %s can be ignored because in participant", instanceId)
-			return nil
+	// 刚启动的时候走staticMembership，curG还没有初始化
+	if c.curG != nil {
+		for _, id := range c.curG.Participant {
+			if id == instanceId {
+				Logger.Printf("Instance %s can be ignored because in participant", instanceId)
+				return nil
+			}
 		}
 	}
 
@@ -1054,6 +1085,7 @@ tryWatch:
 				if ev.IsCreate() || ev.Type == clientv3.EventTypeDelete {
 					Logger.Printf("Got hb rb ev: [%s]", ev.Kv.String())
 					rb = true
+					break
 				}
 			}
 
@@ -1063,7 +1095,7 @@ tryWatch:
 				}
 
 				if err := c.leaderHandleRb(ctx); err != nil {
-					return errors.Wrap(err, "Leader failed to handle rb")
+					return errors.Wrap(err, "FAILED to handle new instance event from heartbeat")
 				}
 				Logger.Printf("leader handle rb completed g [%s]", c.newG.String())
 			}
@@ -1248,7 +1280,7 @@ keepaliveForever:
 
 		select {
 		case <-ctx.Done():
-			Logger.Print("instanceHb exit")
+			Logger.Printf("Instance %s hb exit", c.instanceId)
 			return
 		default:
 		}
@@ -1267,7 +1299,7 @@ keepaliveForever:
 
 		select {
 		case <-ctx.Done():
-			Logger.Print("instanceHb exit")
+			Logger.Printf("Instance %s hb exit", c.instanceId)
 			return
 		default:
 		}
@@ -1281,7 +1313,7 @@ keepaliveForever:
 
 		select {
 		case <-ctx.Done():
-			Logger.Print("instanceHb exit")
+			Logger.Printf("Instance %s hb exit", c.instanceId)
 			return
 		default:
 		}
@@ -1293,7 +1325,11 @@ keepaliveForever:
 	for {
 		select {
 		case <-ctx.Done():
-			Logger.Print("instanceHb exit")
+			// 退出要关闭hb goroutine
+			if err := s.Close(); err != nil {
+				Logger.Printf("err: %+v", err)
+			}
+			Logger.Printf("Instance %s hb exit", c.instanceId)
 			return
 		case <-s.Done():
 			goto keepaliveForever

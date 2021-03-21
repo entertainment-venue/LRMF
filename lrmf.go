@@ -1,8 +1,8 @@
 package lrmf
 
 import (
-	"io/ioutil"
 	"log"
+	"os"
 )
 
 // StdLogger is used to log error messages.
@@ -12,4 +12,4 @@ type StdLogger interface {
 	Println(v ...interface{})
 }
 
-var Logger StdLogger = log.New(ioutil.Discard, "[lrmf] ", log.LstdFlags)
+var Logger StdLogger = log.New(os.Stdout, "[lrmf] ", log.LstdFlags|log.Lshortfile)
