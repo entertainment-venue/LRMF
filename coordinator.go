@@ -264,7 +264,10 @@ func (c *WorkerCoordinator) leaderCamp(ctx context.Context) {
 
 		// 开启rb监管goroutine
 		if err := c.leaderHandleRb(ctx); err != nil {
-			Logger.Printf("err: %+v", err)
+			if !errors.Is(err, errClose) {
+				Logger.Printf("Unexpected err: %+v", err)
+			}
+
 			time.Sleep(defaultOpWaitTimeout)
 			goto tryTriggerRb
 		} else {
@@ -505,37 +508,47 @@ func (c *WorkerCoordinator) handleRbEvent(ctx context.Context) {
 		revoke -> assign 两个阶段在全局必须串行
 	*/
 
-	if err := c.waitState(ctx, StateRevoke.String()); err != nil && errors.Is(err, errClose) {
-		Logger.Printf("Unexpected err: %+v", err)
+	if err := c.waitState(ctx, StateRevoke.String()); err != nil {
+		if !errors.Is(err, errClose) {
+			Logger.Printf("Unexpected err: %+v", err)
+		}
 		return
 	}
-	Logger.Printf("waitState success %d", StateRevoke)
+	Logger.Printf("Instance %s waitState success %d", c.instanceId, StateRevoke)
 
-	if err := c.instanceHandleRb(ctx, StateRevoke.String()); err != nil && errors.Is(err, errClose) {
-		Logger.Printf("Unexpected err: %+v", err)
+	if err := c.instanceHandleRb(ctx, StateRevoke.String()); err != nil {
+		if !errors.Is(err, errClose) {
+			Logger.Printf("Unexpected err: %+v", err)
+		}
 		return
 	}
-	Logger.Printf("instanceHandleRb completed %d", StateRevoke)
+	Logger.Printf("Instance %s instanceHandleRb completed %d", c.instanceId, StateRevoke)
 
-	if err := c.waitState(ctx, StateAssign.String()); err != nil && errors.Is(err, errClose) {
-		Logger.Printf("Unexpected err: %+v", err)
+	if err := c.waitState(ctx, StateAssign.String()); err != nil {
+		if !errors.Is(err, errClose) {
+			Logger.Printf("Unexpected err: %+v", err)
+		}
 		return
 	}
-	Logger.Printf("waitState success %d", StateAssign)
+	Logger.Printf("Instance %s waitState success %d", c.instanceId, StateAssign)
 
-	if err := c.instanceHandleRb(ctx, StateAssign.String()); err != nil && errors.Is(err, errClose) {
-		Logger.Printf("Unexpected err: %+v", err)
+	if err := c.instanceHandleRb(ctx, StateAssign.String()); err != nil {
+		if !errors.Is(err, errClose) {
+			Logger.Printf("Unexpected err: %+v", err)
+		}
 		return
 	}
-	Logger.Printf("instanceHandleRb completed %d", StateAssign)
+	Logger.Printf("Instance %s instanceHandleRb completed %d", c.instanceId, StateAssign)
 
 	if err := c.waitCompareAndSwap(
 		ctx,
 		c.curG,
 		c.etcdWrapper.nodeGJoinInstance(c.curG.Id),
 		StateAssign.String(),
-		StateIdle.String()); err != nil && errors.Is(err, errClose) {
-		Logger.Printf("FAILED to finish rb, unexpected err %+v", err)
+		StateIdle.String()); err != nil {
+		if !errors.Is(err, errClose) {
+			Logger.Printf("Unexpected err: %+v", err)
+		}
 		return
 	}
 	Logger.Printf("rb completed on %s, g [%s]", c.instanceId, c.curG.String())
