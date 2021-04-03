@@ -3,9 +3,9 @@ package lrmf
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -23,7 +23,15 @@ const (
 )
 
 func (s instanceState) String() string {
-	return strconv.FormatInt(int64(s), 10)
+	switch s {
+	case StateIdle:
+		return "idle"
+	case StateRevoke:
+		return "revoke"
+	case StateAssign:
+		return "assign"
+	}
+	panic(fmt.Sprintf("Unexpected state %d", s))
 }
 
 const (
@@ -514,7 +522,7 @@ func (c *WorkerCoordinator) handleRbEvent(ctx context.Context) {
 		}
 		return
 	}
-	Logger.Printf("Instance %s waitState success %d", c.instanceId, StateRevoke)
+	Logger.Printf("Instance %s waitState success %s", c.instanceId, StateRevoke)
 
 	if err := c.instanceHandleRb(ctx, StateRevoke.String()); err != nil {
 		if !errors.Is(err, errClose) {
@@ -522,7 +530,7 @@ func (c *WorkerCoordinator) handleRbEvent(ctx context.Context) {
 		}
 		return
 	}
-	Logger.Printf("Instance %s instanceHandleRb completed %d", c.instanceId, StateRevoke)
+	Logger.Printf("Instance %s instanceHandleRb completed %s", c.instanceId, StateRevoke)
 
 	if err := c.waitState(ctx, StateAssign.String()); err != nil {
 		if !errors.Is(err, errClose) {
@@ -530,7 +538,7 @@ func (c *WorkerCoordinator) handleRbEvent(ctx context.Context) {
 		}
 		return
 	}
-	Logger.Printf("Instance %s waitState success %d", c.instanceId, StateAssign)
+	Logger.Printf("Instance %s waitState success %s", c.instanceId, StateAssign)
 
 	if err := c.instanceHandleRb(ctx, StateAssign.String()); err != nil {
 		if !errors.Is(err, errClose) {
@@ -538,7 +546,7 @@ func (c *WorkerCoordinator) handleRbEvent(ctx context.Context) {
 		}
 		return
 	}
-	Logger.Printf("Instance %s instanceHandleRb completed %d", c.instanceId, StateAssign)
+	Logger.Printf("Instance %s instanceHandleRb completed %s", c.instanceId, StateAssign)
 
 	if err := c.waitCompareAndSwap(
 		ctx,
@@ -632,7 +640,12 @@ func (c *WorkerCoordinator) leaderHandleRb(ctx context.Context) error {
 			case StateRevoke:
 
 				// 所有instance都加入revoke后，让集群的rb state过渡到assign状态
-				if err := c.waitCompareAndSwap(ctx, c.newG, c.etcdWrapper.nodeRbState(), formatStateValue(StateRevoke.String(), c.leaseID), formatStateValue(StateAssign.String(), c.leaseID)); err != nil {
+				if err := c.waitCompareAndSwap(
+					ctx,
+					c.newG,
+					c.etcdWrapper.nodeRbState(),
+					formatStateValue(StateRevoke.String(), c.leaseID),
+					formatStateValue(StateAssign.String(), c.leaseID)); err != nil {
 					return errors.Wrap(err, "Quit waitCompareAndSwap, from revoke to assign")
 				}
 
@@ -642,7 +655,12 @@ func (c *WorkerCoordinator) leaderHandleRb(ctx context.Context) error {
 				}
 
 				// rb state恢复idle状态
-				if err := c.waitCompareAndSwap(ctx, c.newG, c.etcdWrapper.nodeRbState(), formatStateValue(StateAssign.String(), c.leaseID), formatStateValue(StateIdle.String(), c.leaseID)); err != nil {
+				if err := c.waitCompareAndSwap(
+					ctx,
+					c.newG,
+					c.etcdWrapper.nodeRbState(),
+					formatStateValue(StateAssign.String(), c.leaseID),
+					formatStateValue(StateIdle.String(), c.leaseID)); err != nil {
 					return errors.Wrap(err, "Quit waitCompareAndSwap from assign to idle")
 				}
 
