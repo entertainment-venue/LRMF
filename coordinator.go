@@ -58,12 +58,10 @@ type WorkerCoordinator struct {
 	// leader rejoin的场景需要rebalance，这也会发生在rolling bounces场景下，但是static membership会控制其他节点启动不会触发rebalance。
 	instanceId string
 
-	// 下面的配置需要etcd的联动
-
 	// 基于etcd机制实现
 	etcdWrapper *etcdWrapper
 
-	// 轮次，标记当前instance所处的generation
+	// 轮次，标记当前instance所处的generation，在etcd中g的存储空间通过目录隔离，instance在g的空间内协作完成任务分配
 	curG *G
 
 	// 与worker之间的通道
@@ -75,13 +73,12 @@ type WorkerCoordinator struct {
 	// leader获取任务的通道
 	taskProvider TaskProvider
 
-	// 管理零散goroutine
+	// 管理coordinator内部goroutine：
+	// 1. leaderCamp leader竞选，选中后处理整体rb过程中的协调工作
+	// 2. instanceHb instance保证自己存活的机制，利用clientv3提供的机制与etcd做交互
+	// 3. watchG instance关注rb事件，leader关注instance存活(在leaderCamp中)，只有leader能够触发rb
 	gracefulCancelFunc context.CancelFunc
 	gracefulWG         sync.WaitGroup
-
-	// 能够让正在进行的rb goroutine停下来
-	rbCancelFunc context.CancelFunc
-	rbWG         sync.WaitGroup
 
 	// 同一WorkerCoordinator对象不允许多次join group，框架无bug场景，会自修复
 	mu      sync.Mutex
@@ -302,17 +299,17 @@ func (c *WorkerCoordinator) watchG(ctx context.Context) {
 	// 如果拿到的g在assign完成后，已经不是最新的g，下面的Watch会参与到后续rb中；
 	// 拿到g后，会获取当前state，如果是rb，就认为当前g不合法，尝试参与到g之后的rb event中。
 tryStatic:
+	// 使用goto的场景都需要做done的判断，防止因为etcd挂掉导致goroutine导致不能接受主动退出指令
+	select {
+	case <-ctx.Done():
+		Logger.Printf("watchG exit when tryStatic")
+		return
+	default:
+	}
+
 	rev, err := c.staticMembership(ctx)
 	if err != nil {
 		Logger.Printf("FAILED to static, err: %+v", err)
-
-		select {
-		case <-ctx.Done():
-			Logger.Printf("watchG exit")
-			return
-		default:
-		}
-
 		time.Sleep(defaultOpWaitTimeout)
 		goto tryStatic
 	}
@@ -321,6 +318,12 @@ tryStatic:
 	opts = append(opts, clientv3.WithFilterDelete())
 	opts = append(opts, clientv3.WithRev(rev))
 
+	var (
+		wg sync.WaitGroup
+		cancelFunc context.CancelFunc
+	)
+	_, cancelFunc = context.WithCancel(context.TODO())
+
 tryWatch:
 	wch := c.etcdWrapper.etcdClientV3.Watch(ctx, c.etcdWrapper.nodeGId(), opts...)
 	for {
@@ -328,13 +331,9 @@ tryWatch:
 		case <-ctx.Done():
 			Logger.Printf("watchG exit")
 
-			// 新rb过来，强制停止，并开启新的rb操作
-			if c.rbCancelFunc != nil {
-				c.rbCancelFunc()
-				c.rbWG.Wait()
-
-				Logger.Printf("All handleRbEvent exit")
-			}
+			// watchG退出，尝试停掉自己的子goroutine
+			cancelFunc()
+			wg.Wait()
 
 			return
 		case wr := <-wch:
@@ -370,18 +369,16 @@ tryWatch:
 				}
 
 				// 新rb过来，强制停止，并开启新的rb操作
-				if c.rbCancelFunc != nil {
-					c.rbCancelFunc()
-					c.rbWG.Wait()
-				}
+				cancelFunc()
+				wg.Wait()
 
 				// g的替换要等带rb goroutine回收完毕
 				c.curG = &newG
-				cancelCtx, cancelFunc := context.WithCancel(ctx)
-				c.rbCancelFunc = cancelFunc
 
-				c.rbWG.Add(1)
-				go c.handleRbEvent(cancelCtx)
+				var cancelCtx context.Context
+				cancelCtx, cancelFunc = context.WithCancel(context.TODO())
+				wg.Add(1)
+				go c.handleRbEvent(cancelCtx, &wg)
 			}
 		}
 	}
@@ -486,8 +483,8 @@ func (c *WorkerCoordinator) staticMembership(ctx context.Context) (int64, error)
 	return rev, nil
 }
 
-func (c *WorkerCoordinator) handleRbEvent(ctx context.Context) {
-	defer c.rbWG.Done()
+func (c *WorkerCoordinator) handleRbEvent(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
 
 	/*
 		follower判断是否Participant是否包含自己
