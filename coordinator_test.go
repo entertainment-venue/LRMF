@@ -144,7 +144,7 @@ func Test_leaderHandleRb_idle2revoke(t *testing.T) {
 		skipErr(t, err)
 
 		time.Sleep(3 * time.Second)
-		stateValue := fmt.Sprintf("%s_%d", StateIdle.String(), coordinator.leaseID)
+		stateValue := fmt.Sprintf("%s_%d", StateIdle.String(), coordinator.curG.LeaseID())
 		err = wrapper.put(context.TODO(), wrapper.nodeRbState(), stateValue)
 		skipErr(t, err)
 
@@ -184,7 +184,7 @@ func Test_leaderHandleRb_revoke2assign(t *testing.T) {
 		skipErr(t, err)
 
 		time.Sleep(3 * time.Second)
-		stateValue := fmt.Sprintf("%s_%d", StateRevoke.String(), coordinator.leaseID)
+		stateValue := fmt.Sprintf("%s_%d", StateRevoke.String(), coordinator.curG.LeaseID())
 		err = wrapper.put(context.TODO(), wrapper.nodeRbState(), stateValue)
 		skipErr(t, err)
 

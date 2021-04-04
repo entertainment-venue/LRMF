@@ -81,10 +81,12 @@ type WorkerCoordinator struct {
 	gracefulWG         sync.WaitGroup
 
 	// 同一WorkerCoordinator对象不允许多次join group，框架无bug场景，会自修复
-	mu      sync.Mutex
-	joined  bool             // 不允许JoinGroup重复进入
-	leaseID clientv3.LeaseID // rb过程中leader需要利用leaseID防止split brain，作用在state节点
+	mu sync.Mutex
 
+	// 不允许JoinGroup重复进入
+	joined bool
+
+	// rb过程中leader需要利用leaseID防止split brain，作用在state节点
 	newG *G // 4 leader
 
 	// 利用etcd中lease机制管理与特定instance相关的任务节点，一旦instance因为网络或者自身原因不能继续保证lease的存活，与该lease
@@ -164,6 +166,10 @@ type G struct {
 func (g *G) String() string {
 	b, _ := json.Marshal(g)
 	return string(b)
+}
+
+func (g *G) LeaseID() clientv3.LeaseID {
+	return clientv3.LeaseID(g.Id)
 }
 
 func ParseG(ctx context.Context, val string) *G {
@@ -319,7 +325,7 @@ tryStatic:
 	opts = append(opts, clientv3.WithRev(rev))
 
 	var (
-		wg sync.WaitGroup
+		wg         sync.WaitGroup
 		cancelFunc context.CancelFunc
 	)
 	_, cancelFunc = context.WithCancel(context.TODO())
@@ -623,8 +629,8 @@ func (c *WorkerCoordinator) leaderHandleRb(ctx context.Context) error {
 					ctx,
 					c.newG,
 					c.etcdWrapper.nodeRbState(),
-					formatStateValue(StateIdle.String(), c.leaseID),
-					formatStateValue(StateRevoke.String(), c.leaseID)); err != nil {
+					formatStateValue(StateIdle.String(), c.newG.LeaseID()),
+					formatStateValue(StateRevoke.String(), c.newG.LeaseID())); err != nil {
 					return err
 				}
 
@@ -641,8 +647,8 @@ func (c *WorkerCoordinator) leaderHandleRb(ctx context.Context) error {
 					ctx,
 					c.newG,
 					c.etcdWrapper.nodeRbState(),
-					formatStateValue(StateRevoke.String(), c.leaseID),
-					formatStateValue(StateAssign.String(), c.leaseID)); err != nil {
+					formatStateValue(StateRevoke.String(), c.newG.LeaseID()),
+					formatStateValue(StateAssign.String(), c.newG.LeaseID())); err != nil {
 					return errors.Wrap(err, "Quit waitCompareAndSwap, from revoke to assign")
 				}
 
@@ -656,8 +662,8 @@ func (c *WorkerCoordinator) leaderHandleRb(ctx context.Context) error {
 					ctx,
 					c.newG,
 					c.etcdWrapper.nodeRbState(),
-					formatStateValue(StateAssign.String(), c.leaseID),
-					formatStateValue(StateIdle.String(), c.leaseID)); err != nil {
+					formatStateValue(StateAssign.String(), c.newG.LeaseID()),
+					formatStateValue(StateIdle.String(), c.newG.LeaseID())); err != nil {
 					return errors.Wrap(err, "Quit waitCompareAndSwap from assign to idle")
 				}
 
@@ -1260,7 +1266,7 @@ func (c *WorkerCoordinator) triggerRb(ctx context.Context, leaseID clientv3.Leas
 	// 清理现有g的数据
 	c.tryCleanExpiredGDataNode(ctx)
 
-	c.newG, c.leaseID = &newG, leaseID
+	c.newG = &newG
 	return false, nil
 }
 
