@@ -376,7 +376,7 @@ func Test_instanceHb(t *testing.T) {
 	coordinator.instanceId = "testInstance"
 	coordinator.curG = &G{Id: 1}
 
-	coordinator.instanceHb(context.TODO())
+	coordinator.hb(context.TODO())
 }
 
 func clearData(t *testing.T) {

@@ -75,7 +75,7 @@ type WorkerCoordinator struct {
 
 	// 管理coordinator内部goroutine：
 	// 1. leaderCamp leader竞选，选中后处理整体rb过程中的协调工作
-	// 2. instanceHb instance保证自己存活的机制，利用clientv3提供的机制与etcd做交互
+	// 2. hb instance保证自己存活的机制，利用clientv3提供的机制与etcd做交互
 	// 3. watchG instance关注rb事件，leader关注instance存活(在leaderCamp中)，只有leader能够触发rb
 	gracefulCancelFunc context.CancelFunc
 	gracefulWG         sync.WaitGroup
@@ -120,14 +120,10 @@ func (c *WorkerCoordinator) JoinGroup(ctx context.Context) error {
 	cancelCtx, cancelFunc := context.WithCancel(ctx)
 	c.gracefulCancelFunc = cancelFunc
 
-	c.gracefulWG.Add(1)
-	go c.leaderCamp(cancelCtx)
-
-	c.gracefulWG.Add(1)
-	go c.instanceHb(cancelCtx)
-
-	c.gracefulWG.Add(1)
-	go c.watchG(cancelCtx)
+	c.gracefulWG.Add(3)
+	go withRecover(cancelCtx, c.leaderCamp)
+	go withRecover(cancelCtx, c.hb)
+	go withRecover(cancelCtx, c.watchG)
 
 	return nil
 }
@@ -146,10 +142,6 @@ func (c *WorkerCoordinator) TriggerRb(ctx context.Context) error {
 	}
 	return nil
 }
-
-/*
-leader和follower不同角色在rebalance过程中的行为
-*/
 
 type G struct {
 	// generation的Id，和instanceId区分开
@@ -1302,7 +1294,7 @@ func (hb *heartbeatData) String() string {
 
 // https://github.com/etcd-io/etcd/issues/1232
 // https://github.com/etcd-io/etcd/issues/385
-func (c *WorkerCoordinator) instanceHb(ctx context.Context) {
+func (c *WorkerCoordinator) hb(ctx context.Context) {
 	c.gracefulWG.Done()
 
 	hbData := heartbeatData{Timestamp: time.Now().Unix()}

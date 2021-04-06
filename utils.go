@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,21 @@ func (v stateValue) String() string {
 
 func formatStateValue(state string, leaseID clientv3.LeaseID) string {
 	return fmt.Sprintf("%s_%d", state, leaseID)
+}
+
+func withRecover(ctx context.Context, fn func(ctx context.Context)) {
+	defer func() {
+		if err := recover(); err != nil {
+			Logger.Printf("panic happened: %v", err)
+
+			// 打印堆栈，方便问题追查
+			var buf [4096]byte
+			n := runtime.Stack(buf[:], false)
+			Logger.Printf("panic: %s", string(buf[:n]))
+		}
+	}()
+
+	fn(ctx)
 }
 
 // unit test
