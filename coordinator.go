@@ -175,7 +175,8 @@ func (g *G) LeaseID() clientv3.LeaseID {
 func ParseG(ctx context.Context, val string) *G {
 	g := G{}
 	if err := json.Unmarshal([]byte(val), &g); err != nil {
-		Logger.Printf("FAILED to unmarshal %s, err: %s", val, err.Error())
+		// 有些错误不可能发生，发生就可以直接panic，没必要让程序继续执行
+		panic(fmt.Sprintf("Unexpect err:  FAILED to unmarshal %s, err %s", val, err.Error()))
 	}
 	return &g
 }
