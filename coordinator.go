@@ -45,7 +45,7 @@ const (
 	defaultOpWaitTimeout = 1 * time.Second
 )
 
-type WorkerCoordinator struct {
+type Coordinator struct {
 	// 例如：Kafka
 	protocol string
 	// service name，用于对接naming service
@@ -98,7 +98,7 @@ type WorkerCoordinator struct {
 	instanceLeaseID clientv3.LeaseID
 }
 
-func (c *WorkerCoordinator) JoinGroup(ctx context.Context) error {
+func (c *Coordinator) JoinGroup(ctx context.Context) error {
 	/*
 		rebalance触发时机：
 		1 worker增加减少（这块需要考虑rolling bounce，引入static membership机制）
@@ -128,7 +128,7 @@ func (c *WorkerCoordinator) JoinGroup(ctx context.Context) error {
 	return nil
 }
 
-func (c *WorkerCoordinator) Close(ctx context.Context) {
+func (c *Coordinator) Close(ctx context.Context) {
 	if c.gracefulCancelFunc != nil {
 		c.gracefulCancelFunc()
 		c.gracefulWG.Wait()
@@ -136,7 +136,7 @@ func (c *WorkerCoordinator) Close(ctx context.Context) {
 	Logger.Printf("coordinator %s exit on g %s", c.instanceId, c.curG.String())
 }
 
-func (c *WorkerCoordinator) TriggerRb(ctx context.Context) error {
+func (c *Coordinator) TriggerRb(ctx context.Context) error {
 	if err := c.tryTriggerRb(ctx); err != nil {
 		return errors.Wrap(err, "FAILED to TriggerRb")
 	}
@@ -173,7 +173,7 @@ func ParseG(ctx context.Context, val string) *G {
 	return &g
 }
 
-func (c *WorkerCoordinator) leaderCamp(ctx context.Context) {
+func (c *Coordinator) leaderCamp(ctx context.Context) {
 	/*
 		split brain问题:
 
@@ -290,7 +290,7 @@ func (c *WorkerCoordinator) leaderCamp(ctx context.Context) {
 	}
 }
 
-func (c *WorkerCoordinator) watchG(ctx context.Context) {
+func (c *Coordinator) watchG(ctx context.Context) {
 	defer c.gracefulWG.Done()
 
 	Logger.Print("Start watch g")
@@ -383,7 +383,7 @@ tryWatch:
 	}
 }
 
-func (c *WorkerCoordinator) staticMembership(ctx context.Context) (int64, error) {
+func (c *Coordinator) staticMembership(ctx context.Context) (int64, error) {
 	/*
 		未知错误，交给上游重试，如果放弃：当前集群是idle状态，长时间某些p是不被消费的，会触发lag报警
 	*/
@@ -482,7 +482,7 @@ func (c *WorkerCoordinator) staticMembership(ctx context.Context) (int64, error)
 	return rev, nil
 }
 
-func (c *WorkerCoordinator) handleRbEvent(ctx context.Context, wg *sync.WaitGroup) {
+func (c *Coordinator) handleRbEvent(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	/*
@@ -558,7 +558,7 @@ func (c *WorkerCoordinator) handleRbEvent(ctx context.Context, wg *sync.WaitGrou
 	Logger.Printf("rb completed on %s, g [%s]", c.instanceId, c.curG.String())
 }
 
-func (c *WorkerCoordinator) leaderHandleRb(ctx context.Context) error {
+func (c *Coordinator) leaderHandleRb(ctx context.Context) error {
 	/*
 		leader干活的开始点有两个：
 		1 triggerRb中因为Hb某个节点的增加/减少，instance node有变化且当前不处于rb状态
@@ -666,7 +666,7 @@ func (c *WorkerCoordinator) leaderHandleRb(ctx context.Context) error {
 	}
 }
 
-func (c *WorkerCoordinator) instanceHandleRb(ctx context.Context, curState string) error {
+func (c *Coordinator) instanceHandleRb(ctx context.Context, curState string) error {
 	assignNode := c.etcdWrapper.nodeGAssignInstanceId(c.curG.Id, c.instanceId)
 	resp, err := c.etcdWrapper.get(ctx, assignNode, nil)
 	if err != nil {
@@ -763,7 +763,7 @@ joinOp:
 }
 
 // 等待value变为某个值
-func (c *WorkerCoordinator) waitState(ctx context.Context, target string) error {
+func (c *Coordinator) waitState(ctx context.Context, target string) error {
 
 tryGetState:
 	resp, err := c.etcdWrapper.get(ctx, c.etcdWrapper.nodeRbState(), nil)
@@ -821,7 +821,7 @@ tryWatch:
 	}
 }
 
-func (c *WorkerCoordinator) waitInstanceState(ctx context.Context, state string, participant []string) error {
+func (c *Coordinator) waitInstanceState(ctx context.Context, state string, participant []string) error {
 	// 收集所有instance的join revoke请求，进入revoke状态
 
 	// 收集current以及现存instance的assignment，新assign存入revoke
@@ -886,7 +886,7 @@ wait:
 	return nil
 }
 
-func (c *WorkerCoordinator) waitCompareAndSwap(ctx context.Context, g *G, node string, curValue string, newValue string) error {
+func (c *Coordinator) waitCompareAndSwap(ctx context.Context, g *G, node string, curValue string, newValue string) error {
 	firstTry := true
 tryCompareAndSwap:
 	select {
@@ -928,7 +928,7 @@ tryCompareAndSwap:
 	return nil
 }
 
-func (c *WorkerCoordinator) waitAdjustAssignment(ctx context.Context, assignment string, fn func(ctx context.Context, assignment string) error) {
+func (c *Coordinator) waitAdjustAssignment(ctx context.Context, assignment string, fn func(ctx context.Context, assignment string) error) {
 	firstTry := true
 
 tryAdjust:
@@ -950,7 +950,7 @@ tryAdjust:
 	}
 }
 
-func (c *WorkerCoordinator) assign(ctx context.Context, assignment string) error {
+func (c *Coordinator) assign(ctx context.Context, assignment string) error {
 	// revoke失败，等待直到rb超时，goroutine退出，也可以直接返回，等待下次rb
 	// 增加goto，可以引入retry功能
 	assignedTasks, err := c.taskHub.OnAssigned(ctx, assignment)
@@ -995,7 +995,7 @@ func (c *WorkerCoordinator) assign(ctx context.Context, assignment string) error
 	return nil
 }
 
-func (c *WorkerCoordinator) canIgnoreInstance(ctx context.Context, instanceId string) error {
+func (c *Coordinator) canIgnoreInstance(ctx context.Context, instanceId string) error {
 	hbInstanceIds, err := c.etcdWrapper.getHbInstanceIds(ctx)
 	if err != nil {
 		return errors.Wrap(err, "")
@@ -1030,7 +1030,7 @@ func (c *WorkerCoordinator) canIgnoreInstance(ctx context.Context, instanceId st
 	return errors.Errorf("Can not ignore %s", instanceId)
 }
 
-func (c *WorkerCoordinator) revoke(ctx context.Context, assignment string) error {
+func (c *Coordinator) revoke(ctx context.Context, assignment string) error {
 	// revoke失败，等待直到rb超时，goroutine退出，也可以直接返回，等待下次rb
 	// 增加goto，可以引入retry功能
 	revokedTasks, err := c.taskHub.OnRevoked(ctx, assignment)
@@ -1081,7 +1081,7 @@ watchHb的职责：
 rb获取instance snapshot之前，leader不能给该instance分任务，相同task对于并行敏感的情况，会出现冲突类错误，instance加入后重新触发rb恢复 FIXME
 rb获取instance snapshot之后，leader分配任务给该节点，但长时间收不到sync group的response，rb timeout重新触发rb
 */
-func (c *WorkerCoordinator) watchHb(ctx context.Context, rev int64, stopper <-chan struct{}) error {
+func (c *Coordinator) watchHb(ctx context.Context, rev int64, stopper <-chan struct{}) error {
 	var opts []clientv3.OpOption
 	opts = append(opts, clientv3.WithPrefix())
 	opts = append(opts, clientv3.WithRev(rev))
@@ -1130,7 +1130,7 @@ tryWatch:
 	}
 }
 
-func (c *WorkerCoordinator) tryTriggerRb(ctx context.Context) error {
+func (c *Coordinator) tryTriggerRb(ctx context.Context) error {
 	locker, leaseID, err := c.etcdWrapper.acquireLock(ctx, defaultSessionTimeout)
 	if err != nil {
 		return errors.Wrap(err, "FAILED to acquire lock")
@@ -1156,7 +1156,7 @@ tryTrigger:
 	return err
 }
 
-func (c *WorkerCoordinator) triggerRb(ctx context.Context, leaseID clientv3.LeaseID) (bool, error) {
+func (c *Coordinator) triggerRb(ctx context.Context, leaseID clientv3.LeaseID) (bool, error) {
 	// 生成新的g，利用leaseID保证互斥，防止split brain场景下，对于g的更新冲突
 	newG := G{
 		Timestamp: time.Now().Unix(),
@@ -1263,7 +1263,7 @@ func (c *WorkerCoordinator) triggerRb(ctx context.Context, leaseID clientv3.Leas
 	return false, nil
 }
 
-func (c *WorkerCoordinator) tryCleanExpiredGDataNode(ctx context.Context) {
+func (c *Coordinator) tryCleanExpiredGDataNode(ctx context.Context) {
 	if err := c.etcdWrapper.del(ctx, c.etcdWrapper.nodeGJoin()); err != nil {
 		Logger.Printf("FAILED to del g join, err: %+v", err)
 	}
@@ -1294,7 +1294,7 @@ func (hb *heartbeatData) String() string {
 
 // https://github.com/etcd-io/etcd/issues/1232
 // https://github.com/etcd-io/etcd/issues/385
-func (c *WorkerCoordinator) hb(ctx context.Context) {
+func (c *Coordinator) hb(ctx context.Context) {
 	c.gracefulWG.Done()
 
 	hbData := heartbeatData{Timestamp: time.Now().Unix()}

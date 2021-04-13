@@ -63,7 +63,7 @@ func WithEtcdEndpoints(v []string) workerCoordinatorOptionsFunc {
 	}
 }
 
-func StartWorkerCoordinator(ctx context.Context, optFunc ...workerCoordinatorOptionsFunc) (*WorkerCoordinator, error) {
+func StartCoordinator(ctx context.Context, optFunc ...workerCoordinatorOptionsFunc) (*Coordinator, error) {
 	opts := defaultWorkerCoordinatorOptions
 	for _, of := range optFunc {
 		of(&opts)
@@ -96,7 +96,7 @@ func StartWorkerCoordinator(ctx context.Context, optFunc ...workerCoordinatorOpt
 
 	// 初始化coordinator，允许当前instance承载不同protocol的任务，coordinator只负责下发任务
 
-	coordinator := WorkerCoordinator{
+	coordinator := Coordinator{
 		protocol:     opts.protocol,
 		instanceId:   opts.instanceId,
 		biz:          opts.biz,

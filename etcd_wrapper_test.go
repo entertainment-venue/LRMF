@@ -11,7 +11,7 @@ import (
 )
 
 func Test_putAndget(t *testing.T) {
-	coordinator := &WorkerCoordinator{}
+	coordinator := &Coordinator{}
 	wrapper, err := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	if err != nil {
 		t.Errorf("%+v", err)
@@ -44,7 +44,7 @@ func Test_putAndget(t *testing.T) {
 }
 
 func Test_createAndGet(t *testing.T) {
-	coordinator := &WorkerCoordinator{}
+	coordinator := &Coordinator{}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 
@@ -89,7 +89,7 @@ func Test_createAndGet(t *testing.T) {
 }
 
 func Test_compareAndSwap(t *testing.T) {
-	coordinator := &WorkerCoordinator{}
+	coordinator := &Coordinator{}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 
@@ -132,7 +132,7 @@ func Test_compareAndSwap(t *testing.T) {
 }
 
 func Test_getKVs(t *testing.T) {
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 
@@ -155,7 +155,7 @@ func Test_getKVs(t *testing.T) {
 }
 
 func Test_incrementAndGet(t *testing.T) {
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 
@@ -207,7 +207,7 @@ func Test_incrementAndGet(t *testing.T) {
 
 func Test_acquireLock(t *testing.T) {
 	// 检验leaseID是否是全局递增的
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 

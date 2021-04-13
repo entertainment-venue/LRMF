@@ -41,10 +41,10 @@ type etcdWrapper struct {
 
 	// 这里涉及到一个coordinator是否需要处理不同protocol的问题，不同业务场景的任务在规模大的场景下，混合均衡没有意义，放在不同cluster更加合适
 	// etcdWrapper隔离掉coordinator中etcd操作的部分
-	coordinator *WorkerCoordinator
+	coordinator *Coordinator
 }
 
-func NewEtcdWrapper(ctx context.Context, endpoints []string, coordinator *WorkerCoordinator) (*etcdWrapper, error) {
+func NewEtcdWrapper(ctx context.Context, endpoints []string, coordinator *Coordinator) (*etcdWrapper, error) {
 	if len(endpoints) < 1 {
 		return nil, errors.New("You must provide at least one etcd address")
 	}

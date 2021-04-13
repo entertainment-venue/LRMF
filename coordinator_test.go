@@ -11,7 +11,7 @@ import (
 )
 
 func Test_leaderCampaign(t *testing.T) {
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -33,7 +33,7 @@ func Test_leaderCampaign(t *testing.T) {
 func Test_triggerRb(t *testing.T) {
 	clearData(t)
 
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -116,7 +116,7 @@ func Test_triggerRb(t *testing.T) {
 func Test_leaderHandleRb_idle2revoke(t *testing.T) {
 	clearData(t)
 
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -156,7 +156,7 @@ func Test_leaderHandleRb_idle2revoke(t *testing.T) {
 func Test_leaderHandleRb_revoke2assign(t *testing.T) {
 	clearData(t)
 
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -196,7 +196,7 @@ func Test_leaderHandleRb_revoke2assign(t *testing.T) {
 func Test_waitState(t *testing.T) {
 	clearData(t)
 
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -226,7 +226,7 @@ func Test_waitState(t *testing.T) {
 func Test_waitInstanceState(t *testing.T) {
 	clearData(t)
 
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -256,14 +256,14 @@ func Test_waitAdjustAssignment(t *testing.T) {
 		return errors.New("err")
 	}
 
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 
 	assignment := "foo"
 	coordinator.waitAdjustAssignment(context.TODO(), assignment, fn)
 }
 
 func Test_watchG(t *testing.T) {
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -291,7 +291,7 @@ func Test_JoinGroup(t *testing.T) {
 			worker := &testWorker{InstanceId: instanceId}
 			taskHub := NewTaskHub(context.TODO(), worker, assignmentParser)
 
-			coordinator, err := StartWorkerCoordinator(
+			coordinator, err := StartCoordinator(
 				context.TODO(),
 				WithEtcdEndpoints([]string{"127.0.0.1:2379"}),
 				WithProtocol("foo"),
@@ -316,7 +316,7 @@ func Test_JoinGroup(t *testing.T) {
 }
 
 func Test_tryDelExpiredG(t *testing.T) {
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -328,7 +328,7 @@ func Test_tryDelExpiredG(t *testing.T) {
 }
 
 func Test_watchHb(t *testing.T) {
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -353,7 +353,7 @@ func Test_watchHb(t *testing.T) {
 }
 
 func Test_tryStaticMembership(t *testing.T) {
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -369,7 +369,7 @@ func Test_tryStaticMembership(t *testing.T) {
 }
 
 func Test_instanceHb(t *testing.T) {
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
@@ -380,7 +380,7 @@ func Test_instanceHb(t *testing.T) {
 }
 
 func clearData(t *testing.T) {
-	coordinator := &WorkerCoordinator{protocol: "foo", biz: "bar"}
+	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
 	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
 	skipErr(t, werr)
 	coordinator.etcdWrapper = wrapper
