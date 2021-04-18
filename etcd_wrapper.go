@@ -56,7 +56,7 @@ func NewEtcdWrapper(ctx context.Context, endpoints []string, coordinator *Coordi
 }
 
 func (w *etcdWrapper) nodePrefix() string {
-	return fmt.Sprintf("%s/%s/%s", w.coordinator.protocol, w.coordinator.biz, w.coordinator.taskProvider.Tenancy())
+	return fmt.Sprintf("%s/%s/%s", w.coordinator.protocol, w.coordinator.biz, w.coordinator.tenancy)
 }
 
 func (w *etcdWrapper) nodeG() string {

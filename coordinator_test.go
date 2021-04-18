@@ -311,6 +311,7 @@ func Test_JoinGroup(t *testing.T) {
 				WithEtcdEndpoints([]string{"127.0.0.1:2379"}),
 				WithProtocol("foo"),
 				WithBiz("bar"),
+				WithTenancy("tenancy"),
 				WithInstanceId(instanceId),
 				WithTaskHub(taskHub),
 				WithTaskProvider(taskProvider),

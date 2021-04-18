@@ -6,9 +6,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-type workerCoordinatorOptions struct {
+type coordinatorOptions struct {
 	protocol      string
 	biz           string
+	tenancy       string
 	instanceId    string
 	etcdEndpoints []string
 	taskHub       TaskHub
@@ -17,54 +18,62 @@ type workerCoordinatorOptions struct {
 }
 
 // coordinator没办法给默认设定，必须精确
-var defaultWorkerCoordinatorOptions = workerCoordinatorOptions{}
+var defaultCoordinatorOptions = coordinatorOptions{
+	tenancy: "default",
+}
 
-type coordinatorOptionsFunc func(options *workerCoordinatorOptions)
+type CoordinatorOptionsFunc func(options *coordinatorOptions)
 
-func WithProtocol(v string) coordinatorOptionsFunc {
-	return func(options *workerCoordinatorOptions) {
+func WithProtocol(v string) CoordinatorOptionsFunc {
+	return func(options *coordinatorOptions) {
 		options.protocol = v
 	}
 }
 
-func WithBiz(v string) coordinatorOptionsFunc {
-	return func(options *workerCoordinatorOptions) {
+func WithBiz(v string) CoordinatorOptionsFunc {
+	return func(options *coordinatorOptions) {
 		options.biz = v
 	}
 }
 
-func WithInstanceId(v string) coordinatorOptionsFunc {
-	return func(options *workerCoordinatorOptions) {
+func WithTenancy(v string) CoordinatorOptionsFunc {
+	return func(options *coordinatorOptions) {
+		options.tenancy = v
+	}
+}
+
+func WithInstanceId(v string) CoordinatorOptionsFunc {
+	return func(options *coordinatorOptions) {
 		options.instanceId = v
 	}
 }
 
-func WithTaskHub(v TaskHub) coordinatorOptionsFunc {
-	return func(options *workerCoordinatorOptions) {
+func WithTaskHub(v TaskHub) CoordinatorOptionsFunc {
+	return func(options *coordinatorOptions) {
 		options.taskHub = v
 	}
 }
 
-func WithAssignor(v Assignor) coordinatorOptionsFunc {
-	return func(options *workerCoordinatorOptions) {
+func WithAssignor(v Assignor) CoordinatorOptionsFunc {
+	return func(options *coordinatorOptions) {
 		options.assignor = v
 	}
 }
 
-func WithTaskProvider(v TaskProvider) coordinatorOptionsFunc {
-	return func(options *workerCoordinatorOptions) {
+func WithTaskProvider(v TaskProvider) CoordinatorOptionsFunc {
+	return func(options *coordinatorOptions) {
 		options.taskProvider = v
 	}
 }
 
-func WithEtcdEndpoints(v []string) coordinatorOptionsFunc {
-	return func(options *workerCoordinatorOptions) {
+func WithEtcdEndpoints(v []string) CoordinatorOptionsFunc {
+	return func(options *coordinatorOptions) {
 		options.etcdEndpoints = v
 	}
 }
 
-func StartCoordinator(ctx context.Context, optFunc ...coordinatorOptionsFunc) (*Coordinator, error) {
-	opts := defaultWorkerCoordinatorOptions
+func StartCoordinator(ctx context.Context, optFunc ...CoordinatorOptionsFunc) (*Coordinator, error) {
+	opts := defaultCoordinatorOptions
 	for _, of := range optFunc {
 		of(&opts)
 	}
@@ -80,6 +89,10 @@ func StartCoordinator(ctx context.Context, optFunc ...coordinatorOptionsFunc) (*
 
 	if opts.biz == "" {
 		return nil, errors.New("Empty biz")
+	}
+
+	if opts.tenancy == "" {
+		return nil, errors.New("Empty tenancy")
 	}
 
 	if opts.taskHub == nil {
@@ -100,6 +113,7 @@ func StartCoordinator(ctx context.Context, optFunc ...coordinatorOptionsFunc) (*
 		protocol:     opts.protocol,
 		instanceId:   opts.instanceId,
 		biz:          opts.biz,
+		tenancy:      opts.tenancy,
 		taskHub:      opts.taskHub,
 		taskProvider: opts.taskProvider,
 		assignor:     opts.assignor,

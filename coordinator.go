@@ -101,6 +101,10 @@ type Coordinator struct {
 	// 1. instance之于etcd不是存活状态，不代表instance所处的进程已经发起被分配的工作，lrmf作为辅助库不能干扰接入应用的行为。
 	// 2. kafka在该场景下，broker是知道某个instance不是存活状态，可以禁止它继续拉取消息/标记offset，但是lrmf作为第三方的库，做不到。
 	s *concurrency.Session
+
+	// 多租户：允许特定的任务在go worker集群上做隔离，生产场景下核心的任务或者并发量与其他任务有显著区别的可以通过tenancy进行隔离做资源独立部署。
+	// TODO 任务之间的流量差异，可以在任务拆分算法上做研究，让集群各机器该项指标的值在更小的范围内浮动
+	tenancy string
 }
 
 func (c *Coordinator) JoinGroup(ctx context.Context) error {

@@ -47,9 +47,6 @@ type TaskHub interface {
 
 type TaskProvider interface {
 	Tasks(ctx context.Context) ([]Task, error)
-
-	// 支持多租户
-	Tenancy() string
 }
 
 type taskHub struct {
