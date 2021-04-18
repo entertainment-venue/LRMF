@@ -11,12 +11,12 @@ Limited：目前仅支持在单点上做任务分配的计算，计算能力不�
 ## Table of Contents
 
 - [Getting Started](#getting-started)
-    - [Installing](##installing)
+    - [Installing](#installing)
 - [Concept explanation](#concept-explanation)
-    - [Task](##task)
-    - [TaskProvider](##taskprovider)
-    - [Assignor](##assignor)
-    - [AssignmentParser](##assignmentparser)
+    - [Task](#task)
+    - [TaskProvider](#taskprovider)
+    - [Assignor](#assignor)
+    - [Worker](#worker)
 - [Example](#example)
 
 ## Getting Started
