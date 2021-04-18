@@ -1,4 +1,4 @@
-package lrmf
+package LRMF
 
 import (
 	"log"
@@ -12,4 +12,4 @@ type StdLogger interface {
 	Println(v ...interface{})
 }
 
-var Logger StdLogger = log.New(os.Stdout, "[lrmf] ", log.LstdFlags|log.Lshortfile)
+var Logger StdLogger = log.New(os.Stdout, "[LRMF] ", log.LstdFlags|log.Lshortfile)

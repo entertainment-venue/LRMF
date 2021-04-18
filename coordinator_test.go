@@ -1,4 +1,4 @@
-package lrmf
+package LRMF
 
 import (
 	"context"
@@ -146,8 +146,7 @@ func Test_leaderHandleRb_idle2revoke(t *testing.T) {
 	coordinator.assignor = &ConsistentHashingAssignor{}
 
 	worker := &testWorker{}
-	assignmentParser := &testAssignmentParser{}
-	coordinator.taskHub = NewTaskHub(context.TODO(), worker, assignmentParser)
+	coordinator.taskHub = NewTaskHub(context.TODO(), worker)
 
 	go func() {
 
@@ -186,8 +185,7 @@ func Test_leaderHandleRb_revoke2assign(t *testing.T) {
 	coordinator.assignor = &ConsistentHashingAssignor{}
 
 	worker := &testWorker{}
-	assignmentParser := &testAssignmentParser{}
-	coordinator.taskHub = NewTaskHub(context.TODO(), worker, assignmentParser)
+	coordinator.taskHub = NewTaskHub(context.TODO(), worker)
 
 	go func() {
 
@@ -286,8 +284,7 @@ func Test_watchG(t *testing.T) {
 	coordinator.curG = &G{Id: 1}
 
 	worker := &testWorker{}
-	assignmentParser := &testAssignmentParser{}
-	taskHub := NewTaskHub(context.TODO(), worker, assignmentParser)
+	taskHub := NewTaskHub(context.TODO(), worker)
 	coordinator.taskHub = taskHub
 
 	coordinator.watchG(context.TODO())
@@ -296,7 +293,6 @@ func Test_watchG(t *testing.T) {
 func Test_JoinGroup(t *testing.T) {
 
 	taskProvider := &testTaskProvider{}
-	assignmentParser := &testAssignmentParser{}
 
 	assignor := &StringOrderEvenlyAssignor{}
 
@@ -304,7 +300,7 @@ func Test_JoinGroup(t *testing.T) {
 		go func(i int) {
 			instanceId := fmt.Sprintf("testInstance_%d", i)
 			worker := &testWorker{InstanceId: instanceId}
-			taskHub := NewTaskHub(context.TODO(), worker, assignmentParser)
+			taskHub := NewTaskHub(context.TODO(), worker)
 
 			coordinator, err := StartCoordinator(
 				context.TODO(),
@@ -377,8 +373,7 @@ func Test_tryStaticMembership(t *testing.T) {
 	coordinator.curG = &G{Id: 1}
 
 	worker := &testWorker{}
-	assignmentParser := &testAssignmentParser{}
-	taskHub := NewTaskHub(context.TODO(), worker, assignmentParser)
+	taskHub := NewTaskHub(context.TODO(), worker)
 	coordinator.taskHub = taskHub
 
 	_, _ = coordinator.staticMembership(context.TODO())

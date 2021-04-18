@@ -1,4 +1,4 @@
-package lrmf
+package LRMF
 
 import (
 	"context"
@@ -26,9 +26,9 @@ func Test_stringOrderEvenlyAssignor(t *testing.T) {
 
 	// 任务多，instance少
 	tasks = []Task{
-		&taskTest{K: "b"},
-		&taskTest{K: "c"},
-		&taskTest{K: "a"},
+		&LRMFTask{K: "b"},
+		&LRMFTask{K: "c"},
+		&LRMFTask{K: "a"},
 	}
 	instanceIds = []string{
 		"foo",
@@ -43,8 +43,8 @@ func Test_stringOrderEvenlyAssignor(t *testing.T) {
 
 	// 任务少，instance多
 	tasks = []Task{
-		&taskTest{K: "foo"},
-		&taskTest{K: "bar"},
+		&LRMFTask{K: "foo"},
+		&LRMFTask{K: "bar"},
 	}
 	instanceIds = []string{
 		"c",

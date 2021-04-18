@@ -1,8 +1,7 @@
-package lrmf
+package LRMF
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"runtime"
 	"strconv"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
-	"github.com/pkg/errors"
 )
 
 // 先干活，在进入周期运行
@@ -71,42 +69,13 @@ func withRecover(ctx context.Context, fn func(ctx context.Context)) {
 }
 
 // unit test
-type taskTest struct {
-	K string `json:"k"`
-	V string `json:"v"`
-}
-
-func (t *taskTest) Key(ctx context.Context) string {
-	return t.K
-}
-
-func (t *taskTest) Value(ctx context.Context) string {
-	return t.V
-}
-
-type testAssignmentParser struct{}
-
-func (p *testAssignmentParser) Unmarshal(ctx context.Context, assignment string) ([]Task, error) {
-	var tasks []*taskTest
-	if err := json.Unmarshal([]byte(assignment), &tasks); err != nil {
-		return nil, errors.Wrapf(err, "FAILED to unmarshal assignment %s", assignment)
-	}
-
-	var r []Task
-	for _, task := range tasks {
-		r = append(r, task)
-	}
-	return r, nil
-}
-
-// unit test
 type testTaskProvider struct{}
 
 func (config *testTaskProvider) Tasks(ctx context.Context) ([]Task, error) {
 	var tasks []Task
-	task1 := &taskTest{K: "key1", V: "value1"}
-	task2 := &taskTest{K: "key2", V: "value2"}
-	task3 := &taskTest{K: "key3", V: "value3"}
+	task1 := &LRMFTask{K: "key1", V: "value1"}
+	task2 := &LRMFTask{K: "key2", V: "value2"}
+	task3 := &LRMFTask{K: "key3", V: "value3"}
 	tasks = append(tasks, task1)
 	tasks = append(tasks, task2)
 	tasks = append(tasks, task3)

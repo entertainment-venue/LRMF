@@ -1,8 +1,8 @@
-package lrmf
+package LRMF
 
 import (
 	"context"
-
+	"encoding/json"
 	"github.com/pkg/errors"
 )
 
@@ -12,6 +12,19 @@ type Task interface {
 
 	// Value代表实际任务内容
 	Value(ctx context.Context) string
+}
+
+type LRMFTask struct {
+	K string `json:"k"`
+	V string `json:"v"`
+}
+
+func (t *LRMFTask) Key(_ context.Context) string {
+	return t.K
+}
+
+func (t *LRMFTask) Value(_ context.Context) string {
+	return t.V
 }
 
 type taskList []Task
@@ -30,6 +43,21 @@ func (tl taskList) Swap(i, j int) {
 
 type AssignmentParser interface {
 	Unmarshal(ctx context.Context, assignment string) ([]Task, error)
+}
+
+type LRMFAssignmentParser struct{}
+
+func (p *LRMFAssignmentParser) Unmarshal(_ context.Context, assignment string) ([]Task, error) {
+	var tasks []*LRMFTask
+	if err := json.Unmarshal([]byte(assignment), &tasks); err != nil {
+		return nil, errors.Wrapf(err, "FAILED to unmarshal assignment %s", assignment)
+	}
+
+	var r []Task
+	for _, task := range tasks {
+		r = append(r, task)
+	}
+	return r, nil
 }
 
 // 解决抽象层面的问题，对接coordinator，相当于抽象类
@@ -54,19 +82,18 @@ type taskHub struct {
 	rawAssignment string
 
 	// 下发revoke/assign
-	workerHub WorkerHub
+	workerHub Worker
 
 	// 转化assignment到tasks
 	assignmentParser AssignmentParser
 }
 
 // 包外访问
-func NewTaskHub(ctx context.Context, workerHub WorkerHub, parser AssignmentParser) TaskHub {
-	// assignment的附值等rb
-	return &taskHub{
-		workerHub:        workerHub,
-		assignmentParser: parser,
-	}
+func NewTaskHub(_ context.Context, workerHub Worker) TaskHub {
+	hub := &taskHub{workerHub: workerHub}
+	// parser参数不对外开放
+	hub.assignmentParser = &LRMFAssignmentParser{}
+	return hub
 }
 
 func (w *taskHub) OnRevoked(ctx context.Context, assignment string) ([]Task, error) {
