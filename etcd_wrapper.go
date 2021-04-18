@@ -18,13 +18,10 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/clientv3/concurrency"
 	"github.com/pkg/errors"
 )
 
@@ -308,33 +305,4 @@ func (w *etcdWrapper) getState(ctx context.Context) (string, error) {
 		return "", errNotNodeExist
 	}
 	return string(resp.Kvs[0].Value), nil
-}
-
-// https://tangxusc.github.io/blog/2019/05/etcd-lock%E8%AF%A6%E8%A7%A3/
-// https://github.com/etcd-io/etcd/blob/master/tests/integration/clientv3/concurrency/example_mutex_test.go
-// https://github.com/etcd-io/etcd/blob/master/Documentation/learning/lock/client/client.go
-func (w *etcdWrapper) acquireLock(ctx context.Context, ttl int) (locker sync.Locker, leaseID clientv3.LeaseID, err error) {
-
-	defer func() {
-		if rerr := recover(); rerr != nil {
-			var buf [4096]byte
-			n := runtime.Stack(buf[:], false)
-			Logger.Printf(fmt.Sprintf("panic because err %+v", rerr))
-			Logger.Printf("%s", string(buf[:n]))
-
-			err = errors.Errorf("acquire lock failed")
-		}
-	}()
-
-	// ttl表示其他节点可以重新尝试操作存储key（大部分场景都能在这个ttl完成，过期是方式deadlock）
-	// 在ttl内rmf需要改变rb state，开启新g（增加revoke节点），默认给10s
-	session, err := concurrency.NewSession(w.etcdClientV3, concurrency.WithTTL(ttl))
-	if err != nil {
-		return nil, 0, errors.Wrap(err, "")
-	}
-
-	locker = concurrency.NewLocker(session, w.nodeRbLocker())
-	// 等defaultLeaderLockSessionTimeout会超时
-	locker.Lock()
-	return locker, session.Lease(), nil
 }

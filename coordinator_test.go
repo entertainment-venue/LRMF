@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/clientv3/concurrency"
 )
 
 func Test_leaderCampaign(t *testing.T) {
@@ -40,6 +41,7 @@ func Test_triggerRb(t *testing.T) {
 	coordinator.etcdWrapper = wrapper
 	coordinator.instanceId = "testInstance"
 	coordinator.curG = &G{Id: 1}
+	coordinator.s = &concurrency.Session{}
 
 	var (
 		err      error
@@ -47,7 +49,7 @@ func Test_triggerRb(t *testing.T) {
 	)
 
 	// 没有hb节点
-	canRetry, err = coordinator.triggerRb(context.TODO(), 1)
+	canRetry, err = coordinator.triggerRb(context.TODO())
 	skipErr(t, err)
 	skipFalse(t, canRetry)
 
@@ -61,7 +63,7 @@ func Test_triggerRb(t *testing.T) {
 	err = wrapper.put(context.TODO(), wrapper.nodeRbLeader()+nodeSuffix, "bar")
 	skipErr(t, err)
 
-	canRetry, err = coordinator.triggerRb(context.TODO(), 1)
+	canRetry, err = coordinator.triggerRb(context.TODO())
 	skipErr(t, err)
 	skipTrue(t, canRetry)
 
@@ -75,7 +77,7 @@ func Test_triggerRb(t *testing.T) {
 	err = wrapper.put(context.TODO(), wrapper.nodeRbState(), "0_1")
 	skipErr(t, err)
 
-	canRetry, err = coordinator.triggerRb(context.TODO(), 1)
+	canRetry, err = coordinator.triggerRb(context.TODO())
 	skipTrue(t, canRetry)
 	skipNoErr(t, err)
 
@@ -91,7 +93,7 @@ func Test_triggerRb(t *testing.T) {
 	err = wrapper.put(context.TODO(), wrapper.nodeGId(), coordinator.curG.String())
 	skipErr(t, err)
 
-	canRetry, err = coordinator.triggerRb(context.TODO(), 1)
+	canRetry, err = coordinator.triggerRb(context.TODO())
 	skipTrue(t, canRetry)
 	skipErr(t, err)
 
@@ -107,7 +109,7 @@ func Test_triggerRb(t *testing.T) {
 	err = wrapper.put(context.TODO(), wrapper.nodeGId(), coordinator.curG.String())
 	skipErr(t, err)
 
-	canRetry, err = coordinator.triggerRb(context.TODO(), 1)
+	canRetry, err = coordinator.triggerRb(context.TODO())
 	skipTrue(t, canRetry)
 	skipNoErr(t, err)
 
@@ -121,7 +123,7 @@ func Test_triggerRb(t *testing.T) {
 	err = wrapper.put(context.TODO(), wrapper.nodeGId(), coordinator.curG.String())
 	skipErr(t, err)
 
-	canRetry, err = coordinator.triggerRb(context.TODO(), 1)
+	canRetry, err = coordinator.triggerRb(context.TODO())
 	skipTrue(t, canRetry)
 	skipNoErr(t, err)
 }

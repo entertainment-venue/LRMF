@@ -89,13 +89,18 @@ type Coordinator struct {
 	// rb过程中leader需要利用leaseID防止split brain，作用在state节点
 	newG *G // 4 leader
 
+	// 一开始就围绕Session做节点的liveness似乎是个更好的选择，目前当前节点的存活关系到：
+	// 1. 任务回收
+	// 2. trigger rb时lock的自动expire
+
+	// 1的描述：
 	// 利用etcd中lease机制管理与特定instance相关的任务节点，一旦instance因为网络或者自身原因不能继续保证lease的存活，与该lease
 	// 相关的任务节点都会被释放。
 	// 任务与instance存活相关，instance存活的标记在etcd中是通过hb节点保证的，所以和hb使用同样的lease。
 	// 注意：
 	// 1. instance之于etcd不是存活状态，不代表instance所处的进程已经发起被分配的工作，lrmf作为辅助库不能干扰接入应用的行为。
 	// 2. kafka在该场景下，broker是知道某个instance不是存活状态，可以禁止它继续拉取消息/标记offset，但是lrmf作为第三方的库，做不到。
-	instanceLeaseID clientv3.LeaseID
+	s *concurrency.Session
 }
 
 func (c *Coordinator) JoinGroup(ctx context.Context) error {
@@ -192,8 +197,9 @@ func (c *Coordinator) leaderCamp(ctx context.Context) {
 			time.Sleep(defaultOpWaitTimeout)
 			goto tryCampaign
 		}
+		c.s = session
 
-		election := concurrency.NewElection(session, c.etcdWrapper.nodeRbLeader())
+		election := concurrency.NewElection(c.s, c.etcdWrapper.nodeRbLeader())
 		if err := election.Campaign(ctx, c.instanceId); err != nil {
 			Logger.Printf("err %+v", err)
 			time.Sleep(defaultOpWaitTimeout)
@@ -222,11 +228,11 @@ func (c *Coordinator) leaderCamp(ctx context.Context) {
 		// 再次调用campaign会以新的身份block，所以一定要是s.Done()
 	tryTriggerRb:
 		select {
-		case <-session.Done():
+		case <-c.s.Done():
 			Logger.Printf("leader session done, tryCampaign again")
 			goto tryCampaign
 		case <-ctx.Done():
-			if err := session.Close(); err != nil {
+			if err := c.s.Close(); err != nil {
 				Logger.Printf("err %+v", err)
 			}
 			return
@@ -252,7 +258,7 @@ func (c *Coordinator) leaderCamp(ctx context.Context) {
 		}
 
 		// leader需要检查rb，监听hb
-		if err := c.watchInstances(ctx, startRevision, session.Done()); err != nil {
+		if err := c.watchInstances(ctx, startRevision, c.s.Done()); err != nil {
 			Logger.Printf("Leader watch hb err: %+v", err)
 		}
 
@@ -942,7 +948,7 @@ func (c *Coordinator) assign(ctx context.Context, assignment string) error {
 		// 上面的OnAssigned成功，表示任务已经分配下去，这里保证etcd中新增task节点。
 	occupyTask:
 		// 这里用leaseID，保证instance down掉的场景，自己的任务etcd节点也会被清除掉，减少下面occupyTask冲突的概率。
-		taskOwnerInstance, err := c.etcdWrapper.createAndGet(ctx, node, c.instanceId, c.instanceLeaseID)
+		taskOwnerInstance, err := c.etcdWrapper.createAndGet(ctx, node, c.instanceId, c.s.Lease())
 		if err == nil {
 			Logger.Printf("Successfully bind %s to instance %s", node, c.instanceId)
 			continue
@@ -1104,21 +1110,23 @@ tryWatch:
 }
 
 func (c *Coordinator) tryTriggerRb(ctx context.Context) error {
-	locker, leaseID, err := c.etcdWrapper.acquireLock(ctx, defaultSessionTimeout)
-	if err != nil {
-		return errors.Wrap(err, "FAILED to acquire lock")
-	}
+	// https://tangxusc.github.io/blog/2019/05/etcd-lock%E8%AF%A6%E8%A7%A3/
+	// https://github.com/etcd-io/etcd/blob/master/tests/integration/clientv3/concurrency/example_mutex_test.go
+	// https://github.com/etcd-io/etcd/blob/master/Documentation/learning/lock/client/client.go
+	// leaderCamp和watchInstances都可能触发rb，这里用lock做下互斥
+	locker := concurrency.NewLocker(c.s, c.etcdWrapper.nodeRbLocker())
+	locker.Lock()
 	defer locker.Unlock()
 
 tryTrigger:
 	select {
 	case <-ctx.Done():
 		Logger.Printf("tryTriggerRb exit")
-		return errors.New("tryTriggerRb exit")
+		return nil
 	default:
 	}
 
-	canRetry, err := c.triggerRb(ctx, leaseID)
+	canRetry, err := c.triggerRb(ctx)
 	if err != nil {
 		Logger.Printf("FAILED to trigger rb canRetry %t, err %+v", canRetry, err)
 	}
@@ -1129,11 +1137,11 @@ tryTrigger:
 	return err
 }
 
-func (c *Coordinator) triggerRb(ctx context.Context, leaseID clientv3.LeaseID) (bool, error) {
+func (c *Coordinator) triggerRb(ctx context.Context) (bool, error) {
 	// 生成新的g，利用leaseID保证互斥，防止split brain场景下，对于g的更新冲突
 	newG := G{
 		Timestamp: time.Now().Unix(),
-		Id:        int64(leaseID),
+		Id:        int64(c.s.Lease()),
 	}
 
 	// 提前设定参与本次rb的instance，如果依赖leader请求得到的snapshot，
@@ -1175,7 +1183,7 @@ func (c *Coordinator) triggerRb(ctx context.Context, leaseID clientv3.LeaseID) (
 		return false, errors.Errorf("FAILED to get node %s, response: %s", stateNode, getResp.Responses[0].String())
 	}
 
-	newStateValue := formatStateValue(StateIdle.String(), leaseID)
+	newStateValue := formatStateValue(StateIdle.String(), c.s.Lease())
 
 	statePutOp := clientv3.OpPut(stateNode, newStateValue)
 	gidPutOp := clientv3.OpPut(gidNode, newG.String())

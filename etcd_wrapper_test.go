@@ -205,33 +205,6 @@ func Test_incrementAndGet(t *testing.T) {
 	}
 }
 
-func Test_acquireLock(t *testing.T) {
-	// 检验leaseID是否是全局递增的
-	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
-	skipErr(t, werr)
-
-	var (
-		locker  sync.Locker
-		leaseID clientv3.LeaseID
-		err     error
-	)
-
-	locker, leaseID, err = wrapper.acquireLock(context.TODO(), 10)
-	skipErr(t, err)
-	locker.Lock()
-	locker.Unlock()
-
-	fmt.Println(leaseID)
-
-	locker, leaseID, err = wrapper.acquireLock(context.TODO(), 10)
-	skipErr(t, err)
-	locker.Lock()
-	locker.Unlock()
-
-	fmt.Println(leaseID)
-}
-
 func skipErr(t *testing.T, err error) {
 	if err != nil {
 		t.Errorf("%+v", err)
