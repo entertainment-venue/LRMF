@@ -1,4 +1,4 @@
-# LRMF(Limited Resource Management Framework)
+## LRMF(Limited Resource Management Framework)
 
 支持以sdk的方式集成到go程序，利用etcd服务实现在不同go进程之间分配任务，类似存储系统中的placement driver角色，这里做的是任务和进程的映射。  
 Limited：目前仅支持在单点上做任务分配的计算，计算能力不能横向扩容。映射算法支持定制化，算法能够支持较大量的任务和进程资源的映射，但是映射的结果需要通过etcd在集群范围内的共享实现协调机制，计算和etcd本身都会随着任务量增加成为瓶颈。  
@@ -8,25 +8,25 @@ Limited：目前仅支持在单点上做任务分配的计算，计算能力不�
 * 利用redis做延迟队列，对zset做存储/消费速率上的容量扩容，可以使用LRMF做分片与消费进程之间的任务分配。
 * 将若干任务在某个维度聚合成group，group与进程之间的分配关系也可以使用LRMF。
 
-# Table of Contents
+## Table of Contents
 
-* [Getting Started](#Getting Started)
-    * [Installing](##Installing)
-    * [Concept explanation](##Concept_explanation)
-        * [Task](###Task)
-        * [TaskProvider](###TaskProvider)
-        * [Assignor](###Assignor)
-        * [AssignmentParser](###AssignmentParser)
-    * [Example](##Example)
+- [Getting Started](#getting-started)
+    - [Installing](##installing)
+- [Concept explanation](##concept-explanation)
+    - [Task](###task)
+    - [TaskProvider](###taskProvider)
+    - [Assignor](###assignor)
+    - [AssignmentParser](###assignmentParser)
+- [Example](##example)
 
-# Getting Started
+## Getting Started
 
-## Installing
+### Installing
 
 安装Go，然后运行：
 `go get github.com/entertainment-venue/LRMF`
 
-## Concept explanation(Concept_explanation)
+## Concept explanation
 
 ### Task
 
