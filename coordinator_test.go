@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -21,11 +22,11 @@ func Test_leaderCampaign(t *testing.T) {
 	config := &testTaskProvider{}
 	coordinator.taskProvider = config
 
-	go func() {
-		coordinator.leaderCamp(context.TODO())
-	}()
+	// go func() {
+	// 	coordinator.leaderCamp(context.TODO())
+	// }()
 
-	time.Sleep(3 * time.Second)
+	// time.Sleep(3 * time.Second)
 
 	coordinator.leaderCamp(context.TODO())
 }
@@ -52,8 +53,12 @@ func Test_triggerRb(t *testing.T) {
 
 	clearData(t)
 
+	idx := 0
 	// 构造hb，存在激活节点的场景
-	err = wrapper.put(context.TODO(), wrapper.nodeHbInstanceId(), "bar")
+
+	idx++
+	nodeSuffix := "/" + strconv.FormatInt(int64(idx), 10)
+	err = wrapper.put(context.TODO(), wrapper.nodeRbLeader()+nodeSuffix, "bar")
 	skipErr(t, err)
 
 	canRetry, err = coordinator.triggerRb(context.TODO(), 1)
@@ -63,7 +68,9 @@ func Test_triggerRb(t *testing.T) {
 	clearData(t)
 
 	// state有，g id没有
-	err = wrapper.put(context.TODO(), wrapper.nodeHbInstanceId(), "bar")
+	idx++
+	nodeSuffix = "/" + strconv.FormatInt(int64(idx), 10)
+	err = wrapper.put(context.TODO(), wrapper.nodeRbLeader()+nodeSuffix, "bar")
 	skipErr(t, err)
 	err = wrapper.put(context.TODO(), wrapper.nodeRbState(), "0_1")
 	skipErr(t, err)
@@ -75,7 +82,9 @@ func Test_triggerRb(t *testing.T) {
 	clearData(t)
 
 	// state有，g id有
-	err = wrapper.put(context.TODO(), wrapper.nodeHbInstanceId(), "bar")
+	idx++
+	nodeSuffix = "/" + strconv.FormatInt(int64(idx), 10)
+	err = wrapper.put(context.TODO(), wrapper.nodeRbLeader()+nodeSuffix, "bar")
 	skipErr(t, err)
 	err = wrapper.put(context.TODO(), wrapper.nodeRbState(), "0_1")
 	skipErr(t, err)
@@ -89,7 +98,9 @@ func Test_triggerRb(t *testing.T) {
 	clearData(t)
 
 	// state和g id的leaseID不一致
-	err = wrapper.put(context.TODO(), wrapper.nodeHbInstanceId(), "bar")
+	idx++
+	nodeSuffix = "/" + strconv.FormatInt(int64(idx), 10)
+	err = wrapper.put(context.TODO(), wrapper.nodeRbLeader()+nodeSuffix, "bar")
 	skipErr(t, err)
 	err = wrapper.put(context.TODO(), wrapper.nodeRbState(), "0_2")
 	skipErr(t, err)
@@ -103,7 +114,9 @@ func Test_triggerRb(t *testing.T) {
 	clearData(t)
 
 	// state没有，g id有
-	err = wrapper.put(context.TODO(), wrapper.nodeHbInstanceId(), "bar")
+	idx++
+	nodeSuffix = "/" + strconv.FormatInt(int64(idx), 10)
+	err = wrapper.put(context.TODO(), wrapper.nodeRbLeader()+nodeSuffix, "bar")
 	skipErr(t, err)
 	err = wrapper.put(context.TODO(), wrapper.nodeGId(), coordinator.curG.String())
 	skipErr(t, err)
@@ -335,14 +348,14 @@ func Test_watchHb(t *testing.T) {
 	coordinator.instanceId = "testInstance"
 	coordinator.curG = &G{Id: 1}
 
-	resp, err := wrapper.get(context.TODO(), wrapper.nodeHb(), []clientv3.OpOption{clientv3.WithPrefix()})
+	resp, err := wrapper.get(context.TODO(), wrapper.nodeRbLeader(), []clientv3.OpOption{clientv3.WithPrefix()})
 	skipErr(t, err)
 
 	cancelCtx, cancelFunc := context.WithCancel(context.TODO())
 
 	rev := resp.Header.Revision
 	rev++
-	go coordinator.watchHb(cancelCtx, rev, nil)
+	go coordinator.watchInstances(cancelCtx, rev, nil)
 
 	go func() {
 		time.Sleep(3 * time.Second)
@@ -365,18 +378,7 @@ func Test_tryStaticMembership(t *testing.T) {
 	taskHub := NewTaskHub(context.TODO(), worker, assignmentParser)
 	coordinator.taskHub = taskHub
 
-	coordinator.staticMembership(context.TODO())
-}
-
-func Test_instanceHb(t *testing.T) {
-	coordinator := &Coordinator{protocol: "foo", biz: "bar"}
-	wrapper, werr := NewEtcdWrapper(context.TODO(), []string{"127.0.0.1:2379"}, coordinator)
-	skipErr(t, werr)
-	coordinator.etcdWrapper = wrapper
-	coordinator.instanceId = "testInstance"
-	coordinator.curG = &G{Id: 1}
-
-	coordinator.hb(context.TODO())
+	_, _ = coordinator.staticMembership(context.TODO())
 }
 
 func clearData(t *testing.T) {
@@ -391,7 +393,7 @@ func clearData(t *testing.T) {
 
 	err = wrapper.del(context.TODO(), wrapper.nodeRbState())
 	skipErr(t, err)
-	err = wrapper.del(context.TODO(), wrapper.nodeHb())
+	err = wrapper.del(context.TODO(), wrapper.nodeRbLeader())
 	skipErr(t, err)
 	err = wrapper.del(context.TODO(), wrapper.nodeGId())
 	skipErr(t, err)

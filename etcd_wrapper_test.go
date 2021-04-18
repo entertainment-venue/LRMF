@@ -138,7 +138,7 @@ func Test_getKVs(t *testing.T) {
 
 	var err error
 
-	prefix := wrapper.nodeHb()
+	prefix := wrapper.nodeRbLeader()
 	_ = wrapper.del(context.TODO(), prefix)
 
 	err = wrapper.put(context.TODO(), prefix+"/1", "1")

@@ -102,14 +102,6 @@ func (w *etcdWrapper) nodeRbLeader() string {
 	return fmt.Sprintf("/rmf/%s/rb/leader", w.nodePrefix())
 }
 
-func (w *etcdWrapper) nodeHb() string {
-	return fmt.Sprintf("/rmf/%s/hb/", w.nodePrefix())
-}
-
-func (w *etcdWrapper) nodeHbInstanceId() string {
-	return fmt.Sprintf("/rmf/%s/hb/%s", w.nodePrefix(), w.coordinator.instanceId)
-}
-
 func (w *etcdWrapper) nodeRbLocker() string {
 	return fmt.Sprintf("/rmf/%s/rb/lock", w.nodePrefix())
 }
@@ -289,9 +281,9 @@ func (w *etcdWrapper) getRbInstanceIdAndAssign(ctx context.Context) (map[string]
 	return w.getKVs(ctx, w.nodeGAssignId(w.coordinator.newG.Id))
 }
 
-func (w *etcdWrapper) getHbInstanceIds(ctx context.Context) ([]string, error) {
-	prefix := w.nodeHb()
-	opts := []clientv3.OpOption{clientv3.WithPrefix(), clientv3.WithKeysOnly()}
+func (w *etcdWrapper) getInstanceIds(ctx context.Context) ([]string, error) {
+	prefix := w.nodeRbLeader()
+	opts := []clientv3.OpOption{clientv3.WithPrefix()}
 	resp, err := w.get(ctx, prefix, opts)
 	if err != nil {
 		return nil, errors.Wrapf(err, "FAILED to get prefix %s", prefix)
@@ -302,8 +294,7 @@ func (w *etcdWrapper) getHbInstanceIds(ctx context.Context) ([]string, error) {
 
 	var r []string
 	for _, kv := range resp.Kvs {
-		_, file := filepath.Split(string(kv.Key))
-		r = append(r, file)
+		r = append(r, string(kv.Value))
 	}
 	return r, nil
 }

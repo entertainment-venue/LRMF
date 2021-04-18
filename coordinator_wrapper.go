@@ -19,51 +19,51 @@ type workerCoordinatorOptions struct {
 // coordinator没办法给默认设定，必须精确
 var defaultWorkerCoordinatorOptions = workerCoordinatorOptions{}
 
-type workerCoordinatorOptionsFunc func(options *workerCoordinatorOptions)
+type coordinatorOptionsFunc func(options *workerCoordinatorOptions)
 
-func WithProtocol(v string) workerCoordinatorOptionsFunc {
+func WithProtocol(v string) coordinatorOptionsFunc {
 	return func(options *workerCoordinatorOptions) {
 		options.protocol = v
 	}
 }
 
-func WithBiz(v string) workerCoordinatorOptionsFunc {
+func WithBiz(v string) coordinatorOptionsFunc {
 	return func(options *workerCoordinatorOptions) {
 		options.biz = v
 	}
 }
 
-func WithInstanceId(v string) workerCoordinatorOptionsFunc {
+func WithInstanceId(v string) coordinatorOptionsFunc {
 	return func(options *workerCoordinatorOptions) {
 		options.instanceId = v
 	}
 }
 
-func WithTaskHub(v TaskHub) workerCoordinatorOptionsFunc {
+func WithTaskHub(v TaskHub) coordinatorOptionsFunc {
 	return func(options *workerCoordinatorOptions) {
 		options.taskHub = v
 	}
 }
 
-func WithAssignor(v Assignor) workerCoordinatorOptionsFunc {
+func WithAssignor(v Assignor) coordinatorOptionsFunc {
 	return func(options *workerCoordinatorOptions) {
 		options.assignor = v
 	}
 }
 
-func WithTaskProvider(v TaskProvider) workerCoordinatorOptionsFunc {
+func WithTaskProvider(v TaskProvider) coordinatorOptionsFunc {
 	return func(options *workerCoordinatorOptions) {
 		options.taskProvider = v
 	}
 }
 
-func WithEtcdEndpoints(v []string) workerCoordinatorOptionsFunc {
+func WithEtcdEndpoints(v []string) coordinatorOptionsFunc {
 	return func(options *workerCoordinatorOptions) {
 		options.etcdEndpoints = v
 	}
 }
 
-func StartCoordinator(ctx context.Context, optFunc ...workerCoordinatorOptionsFunc) (*Coordinator, error) {
+func StartCoordinator(ctx context.Context, optFunc ...coordinatorOptionsFunc) (*Coordinator, error) {
 	opts := defaultWorkerCoordinatorOptions
 	for _, of := range optFunc {
 		of(&opts)

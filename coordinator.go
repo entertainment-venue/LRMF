@@ -122,7 +122,6 @@ func (c *Coordinator) JoinGroup(ctx context.Context) error {
 
 	c.gracefulWG.Add(3)
 	go withRecover(cancelCtx, c.leaderCamp)
-	go withRecover(cancelCtx, c.hb)
 	go withRecover(cancelCtx, c.watchG)
 
 	return nil
@@ -174,33 +173,7 @@ func ParseG(ctx context.Context, val string) *G {
 }
 
 func (c *Coordinator) leaderCamp(ctx context.Context) {
-	/*
-		split brain问题:
-
-		下面是etcd的解决方案：
-		https://github.com/etcd-io/etcd/blob/master/Documentation/learning/why.md
-		https://github.com/etcd-io/etcd/blob/master/Documentation/learning/lock/README.md
-
-		其他相关技术文档：
-		https://fpj.systems/2016/02/10/note-on-fencing-and-distributed-locks/
-		https://github.com/etcd-io/etcd/issues/11457
-		https://jepsen.io/analyses/etcd-3.4.3
-
-		thundering herd问题（惊群效应）
-		当前leader的选举利用lock机制，但当leaderWatcher的时候会产生惊群效应，采用etcd内置的选举实现
-		https://www.projectcalico.org/using-etcd-for-elections/
-		https://cloud.tencent.com/developer/article/1458456
-
-		lrmf解决方案：
-		利用etcd的lock机制达到在ttl内互斥访问存储的目的，rmf的leader作为coordinator存在，leader通过写入g达到触发rb的目的，所以该lock
-		的目的是保证rb周期内的互斥写入，互斥写入能保证rb最基本的正确性，但是多个leader导致rb重复的问题，需要问题leader发现多leader时下放弃写入，重新参与竞争leader
-
-		leader保活方案如下：
-		利用etcd的Election机制，保证全局至少存活一个leader，各instance竞选leader有3个状态：
-		1 没有报错，leader成功，检查是否需要rb，并watch instance节点
-		2 报错，重新参与竞选
-		3 block，在竞选的路上，一旦leader失效，这个就是保证
-	*/
+	// 参考文档：https://github.com/entertainment-venue/lrmf/wiki/etcd-clientv3%E7%AB%9E%E4%BA%89leader%E6%9C%BA%E5%88%B6
 	defer c.gracefulWG.Done()
 
 	for {
@@ -238,7 +211,7 @@ func (c *Coordinator) leaderCamp(ctx context.Context) {
 		default:
 		}
 
-		resp, err := c.etcdWrapper.get(ctx, c.etcdWrapper.nodeHb(), []clientv3.OpOption{clientv3.WithPrefix()})
+		resp, err := c.etcdWrapper.get(ctx, c.etcdWrapper.nodeRbLeader(), []clientv3.OpOption{clientv3.WithPrefix()})
 		if err != nil {
 			Logger.Printf("err %+v", err)
 			time.Sleep(defaultOpWaitTimeout)
@@ -279,7 +252,7 @@ func (c *Coordinator) leaderCamp(ctx context.Context) {
 		}
 
 		// leader需要检查rb，监听hb
-		if err := c.watchHb(ctx, startRevision, session.Done()); err != nil {
+		if err := c.watchInstances(ctx, startRevision, session.Done()); err != nil {
 			Logger.Printf("Leader watch hb err: %+v", err)
 		}
 
@@ -996,7 +969,7 @@ func (c *Coordinator) assign(ctx context.Context, assignment string) error {
 }
 
 func (c *Coordinator) canIgnoreInstance(ctx context.Context, instanceId string) error {
-	hbInstanceIds, err := c.etcdWrapper.getHbInstanceIds(ctx)
+	hbInstanceIds, err := c.etcdWrapper.getInstanceIds(ctx)
 	if err != nil {
 		return errors.Wrap(err, "")
 	}
@@ -1081,24 +1054,24 @@ watchHb的职责：
 rb获取instance snapshot之前，leader不能给该instance分任务，相同task对于并行敏感的情况，会出现冲突类错误，instance加入后重新触发rb恢复 FIXME
 rb获取instance snapshot之后，leader分配任务给该节点，但长时间收不到sync group的response，rb timeout重新触发rb
 */
-func (c *Coordinator) watchHb(ctx context.Context, rev int64, stopper <-chan struct{}) error {
+func (c *Coordinator) watchInstances(ctx context.Context, rev int64, stopper <-chan struct{}) error {
 	var opts []clientv3.OpOption
 	opts = append(opts, clientv3.WithPrefix())
 	opts = append(opts, clientv3.WithRev(rev))
 
 tryWatch:
-	wch := c.etcdWrapper.etcdClientV3.Watch(ctx, c.etcdWrapper.nodeHb(), opts...)
+	wch := c.etcdWrapper.etcdClientV3.Watch(ctx, c.etcdWrapper.nodeRbLeader(), opts...)
 	for {
 		select {
 		case <-ctx.Done():
-			Logger.Printf("watchHb exit")
+			Logger.Printf("watchInstances exit")
 			return nil
 		case <-stopper:
 			Logger.Printf("Leader session done")
 			return nil
 		case wr := <-wch:
 			if err := wr.Err(); err != nil {
-				Logger.Printf("FAILED to watchHb, err: %+v", err)
+				Logger.Printf("FAILED to watchInstances, err: %+v", err)
 
 				if wr.Err().Error() == "etcdserver: mvcc: required revision has been compacted" {
 					rev++
@@ -1166,7 +1139,7 @@ func (c *Coordinator) triggerRb(ctx context.Context, leaseID clientv3.LeaseID) (
 	// 提前设定参与本次rb的instance，如果依赖leader请求得到的snapshot，
 	// 会增加因为新增instance导致rb失败的几率（新增instance在新g产生之后watch g，没有收到rb通知）
 	// 发起会议，当前见到的instance都来，不来就再次rb，降低理解的难度
-	hbInstanceIds, err := c.etcdWrapper.getHbInstanceIds(ctx)
+	hbInstanceIds, err := c.etcdWrapper.getInstanceIds(ctx)
 	if err != nil {
 		return true, errors.Wrap(err, "Failed to get active from node")
 	}
@@ -1269,97 +1242,5 @@ func (c *Coordinator) tryCleanExpiredGDataNode(ctx context.Context) {
 	}
 	if err := c.etcdWrapper.del(ctx, c.etcdWrapper.nodeGAssign()); err != nil {
 		Logger.Printf("FAILED to del g assign, err: %+v", err)
-	}
-}
-
-/*
-   发送hb
-
-   逻辑较简单，单纯周期更新instance状态即可，不需要想group coordinator一样同步rb的时间（基于etcd做的）
-*/
-
-type heartbeatData struct {
-	// hb中存储时间戳，用作ttl失效的一个备选方案
-	Timestamp int64 `json:"timestamp"`
-
-	// 存放特定业务场景下的信息，例如：一般场景下，可以存放当前工作节点负责的任务信息，用于admin做比对，判断任务分布是否符合预期(
-	// 与任务分发节点做对比)
-	Extend string `json:"extend"`
-}
-
-func (hb *heartbeatData) String() string {
-	b, _ := json.Marshal(hb)
-	return string(b)
-}
-
-// https://github.com/etcd-io/etcd/issues/1232
-// https://github.com/etcd-io/etcd/issues/385
-func (c *Coordinator) hb(ctx context.Context) {
-	c.gracefulWG.Done()
-
-	hbData := heartbeatData{Timestamp: time.Now().Unix()}
-	b, _ := json.Marshal(hbData)
-
-keepaliveForever:
-	resp, err := c.etcdWrapper.etcdClientV3.Grant(ctx, int64(defaultSessionTimeout))
-	if err != nil {
-		Logger.Printf("FAILED to grant lease, err %s", err.Error())
-
-		select {
-		case <-ctx.Done():
-			Logger.Printf("Instance %s hb exit", c.instanceId)
-			return
-		default:
-		}
-
-		time.Sleep(defaultOpWaitTimeout)
-		goto keepaliveForever
-	}
-	c.instanceLeaseID = resp.ID
-
-	s, err := concurrency.NewSession(
-		c.etcdWrapper.etcdClientV3,
-		concurrency.WithTTL(int(defaultSessionTimeout)),
-		concurrency.WithLease(c.instanceLeaseID))
-	if err != nil {
-		Logger.Printf("FAILED to new session, err %s", err.Error())
-
-		select {
-		case <-ctx.Done():
-			Logger.Printf("Instance %s hb exit", c.instanceId)
-			return
-		default:
-		}
-
-		time.Sleep(defaultOpWaitTimeout)
-		goto keepaliveForever
-	}
-
-	if _, err := c.etcdWrapper.etcdClientV3.Put(ctx, c.etcdWrapper.nodeHbInstanceId(), string(b), clientv3.WithLease(s.Lease())); err != nil {
-		Logger.Printf("FAILED to put, err %s", err.Error())
-
-		select {
-		case <-ctx.Done():
-			Logger.Printf("Instance %s hb exit", c.instanceId)
-			return
-		default:
-		}
-
-		time.Sleep(defaultOpWaitTimeout)
-		goto keepaliveForever
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			// 退出要关闭hb goroutine
-			if err := s.Close(); err != nil {
-				Logger.Printf("err: %+v", err)
-			}
-			Logger.Printf("Instance %s hb exit", c.instanceId)
-			return
-		case <-s.Done():
-			goto keepaliveForever
-		}
 	}
 }
