@@ -124,6 +124,7 @@ func (c *Coordinator) JoinGroup(ctx context.Context) error {
 	if c.joined {
 		return errors.New("FAILED to call join group, already running")
 	}
+	c.joined = true
 
 	// leader/follower角色可能在运行过程中变化，单独有cancel，其他goroutine都是随着coordinator生命周期的，可以对外提供Close方法
 	cancelCtx, cancelFunc := context.WithCancel(ctx)
