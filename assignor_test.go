@@ -26,9 +26,9 @@ func Test_stringOrderEvenlyAssignor(t *testing.T) {
 
 	// 任务多，instance少
 	tasks = []Task{
-		&LRMFTask{K: "b"},
-		&LRMFTask{K: "c"},
-		&LRMFTask{K: "a"},
+		&KvTask{K: "b"},
+		&KvTask{K: "c"},
+		&KvTask{K: "a"},
 	}
 	instanceIds = []string{
 		"foo",
@@ -43,8 +43,8 @@ func Test_stringOrderEvenlyAssignor(t *testing.T) {
 
 	// 任务少，instance多
 	tasks = []Task{
-		&LRMFTask{K: "foo"},
-		&LRMFTask{K: "bar"},
+		&KvTask{K: "foo"},
+		&KvTask{K: "bar"},
 	}
 	instanceIds = []string{
 		"c",

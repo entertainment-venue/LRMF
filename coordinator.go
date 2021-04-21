@@ -130,7 +130,7 @@ func (c *Coordinator) JoinGroup(ctx context.Context) error {
 	cancelCtx, cancelFunc := context.WithCancel(ctx)
 	c.gracefulCancelFunc = cancelFunc
 
-	c.gracefulWG.Add(3)
+	c.gracefulWG.Add(2)
 	go withRecover(cancelCtx, c.leaderCamp)
 	go withRecover(cancelCtx, c.watchG)
 

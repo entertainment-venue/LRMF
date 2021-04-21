@@ -14,16 +14,16 @@ type Task interface {
 	Value(ctx context.Context) string
 }
 
-type LRMFTask struct {
+type KvTask struct {
 	K string `json:"k"`
 	V string `json:"v"`
 }
 
-func (t *LRMFTask) Key(_ context.Context) string {
+func (t *KvTask) Key(_ context.Context) string {
 	return t.K
 }
 
-func (t *LRMFTask) Value(_ context.Context) string {
+func (t *KvTask) Value(_ context.Context) string {
 	return t.V
 }
 
@@ -45,10 +45,10 @@ type AssignmentParser interface {
 	Unmarshal(ctx context.Context, assignment string) ([]Task, error)
 }
 
-type LRMFAssignmentParser struct{}
+type JsonAssignmentParser struct{}
 
-func (p *LRMFAssignmentParser) Unmarshal(_ context.Context, assignment string) ([]Task, error) {
-	var tasks []*LRMFTask
+func (p *JsonAssignmentParser) Unmarshal(_ context.Context, assignment string) ([]Task, error) {
+	var tasks []*KvTask
 	if err := json.Unmarshal([]byte(assignment), &tasks); err != nil {
 		return nil, errors.Wrapf(err, "FAILED to unmarshal assignment %s", assignment)
 	}
@@ -92,7 +92,7 @@ type taskHub struct {
 func NewTaskHub(_ context.Context, workerHub Worker) TaskHub {
 	hub := &taskHub{workerHub: workerHub}
 	// parser参数不对外开放
-	hub.assignmentParser = &LRMFAssignmentParser{}
+	hub.assignmentParser = &JsonAssignmentParser{}
 	return hub
 }
 

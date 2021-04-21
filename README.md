@@ -42,10 +42,10 @@ type Task interface {
 }
 ```
 
-统一使用LRMF内部定义的Task结构体`LRMFTask`，结构如下：
+统一使用LRMF内部定义的Task结构体`KvTask`，结构如下：
 
 ```
-type LRMFTask struct {
+type KvTask struct {
 	K string `json:"k"`
 	V string `json:"v"`
 }
