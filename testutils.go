@@ -4,7 +4,7 @@ import "context"
 
 type testTaskProvider struct{}
 
-func (config *testTaskProvider) Tasks(ctx context.Context) ([]Task, error) {
+func (config *testTaskProvider) Tasks(_ context.Context) ([]Task, error) {
 	var tasks []Task
 	task1 := &KvTask{K: "key1", V: "value1"}
 	task2 := &KvTask{K: "key2", V: "value2"}
@@ -13,10 +13,6 @@ func (config *testTaskProvider) Tasks(ctx context.Context) ([]Task, error) {
 	tasks = append(tasks, task2)
 	tasks = append(tasks, task3)
 	return tasks, nil
-}
-
-func (config *testTaskProvider) Tenancy() string {
-	return "default"
 }
 
 type testWorker struct {

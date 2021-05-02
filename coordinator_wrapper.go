@@ -19,7 +19,9 @@ type coordinatorOptions struct {
 
 // coordinator没办法给默认设定，必须精确
 var defaultCoordinatorOptions = coordinatorOptions{
-	tenancy: "default",
+	tenancy:  "LRMF_default",
+	protocol: "LRMF_protocol",
+	biz:      "LRMF_biz",
 }
 
 type CoordinatorOptionsFunc func(options *coordinatorOptions)
@@ -104,7 +106,7 @@ func StartCoordinator(ctx context.Context, optFunc ...CoordinatorOptionsFunc) (*
 	}
 
 	if len(opts.etcdEndpoints) < 1 {
-		return nil, errors.New("Empty etcd address")
+		return nil, errors.New("Empty etcd endpoints")
 	}
 
 	// 初始化coordinator，允许当前instance承载不同protocol的任务，coordinator只负责下发任务

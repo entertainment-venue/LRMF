@@ -3,12 +3,16 @@ package LRMF
 import (
 	"context"
 	"fmt"
+	"net"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/pkg/errors"
 )
 
 // 先干活，在进入周期运行
@@ -66,4 +70,47 @@ func withRecover(ctx context.Context, fn func(ctx context.Context)) {
 	}()
 
 	fn(ctx)
+}
+
+func mkdirIfNotExist(path string) error {
+	dir := filepath.Dir(path)
+
+	var err error
+
+	// 存在且err!=nil的情况不考虑
+	_, err = os.Stat(dir)
+
+	if os.IsNotExist(err) {
+		err = os.MkdirAll(dir, os.ModePerm)
+	}
+
+	return errors.Wrap(err, "")
+}
+
+func getLocalIp() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, address := range addrs {
+		// check the address type and if it is not a loopback the display it
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
+}
+
+func ParseKvTask(tasks []Task) []*KvTask {
+	if tasks == nil {
+		return nil
+	}
+
+	var r []*KvTask
+	for _, task := range tasks {
+		r = append(r, task.(*KvTask))
+	}
+	return r
 }
