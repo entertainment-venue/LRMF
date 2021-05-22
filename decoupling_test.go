@@ -3,21 +3,8 @@ package LRMF
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
 )
-
-func Test_fileWatcher(t *testing.T) {
-	fw := fileWatcher{
-		fileName: "/tmp/foo",
-	}
-
-	err := fw.update([]byte(`foo`))
-	skipErr(t, err)
-
-	current, err := fw.get()
-	skipTrue(t, current != "foo")
-}
 
 func Test_smoothTaskProvider(t *testing.T) {
 	provider := smoothTaskProvider{
@@ -37,39 +24,13 @@ func Test_smoothTaskProvider(t *testing.T) {
 	}
 }
 
-func Test_smoothWorker(t *testing.T) {
-	fileName, err := filepath.Abs(defaultFileName)
-	skipErr(t, err)
+func Sample(event *SmoothEvent) {
+	fmt.Println(event.Task.Key(context.TODO()), event.Task.Value(context.TODO()), event.Typ)
 
-	worker := smoothWorker{
-		fw:        &fileWatcher{fileName: fileName},
-		eventChan: make(chan *SmoothEvent, 32),
-	}
-
-	go func(eventChan <-chan *SmoothEvent) {
-		for event := range eventChan {
-			fmt.Println(event.Task.Key(context.TODO()), event.Task.Value(context.TODO()), event.Typ)
-		}
-	}(worker.eventChan)
-
-	var revoke []Task
-	revoke = append(revoke, &KvTask{K: "foo", V: "bar"})
-	err = worker.Revoke(context.TODO(), revoke)
-	skipErr(t, err)
-
-	var assign []Task
-	assign = append(assign, &KvTask{K: "foo2", V: "bar2"})
-	err = worker.Assign(context.TODO(), assign)
-	skipErr(t, err)
-
-	fmt.Println(worker.fw.get())
-
-	done := make(chan bool)
-	<-done
 }
 
 func Test_Smooth(t *testing.T) {
-	eventChan, err := Smooth(
+	err := Smooth(
 		context.TODO(),
 		[]*KvTask{
 			{
@@ -77,17 +38,12 @@ func Test_Smooth(t *testing.T) {
 				V: "bar",
 			},
 		},
+		Sample,
 		WithEtcdEndpoints([]string{"127.0.0.1:2379"}),
 		WithProtocol("foo"),
 		WithBiz("bar"),
 	)
 	skipErr(t, err)
-
-	go func(eventChan <-chan *SmoothEvent) {
-		for event := range eventChan {
-			fmt.Println(event.Task.Key(context.TODO()), event.Task.Value(context.TODO()), event.Typ)
-		}
-	}(eventChan)
 
 	done := make(chan bool)
 	<-done
