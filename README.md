@@ -18,6 +18,8 @@ Limited：目前仅支持在单点上做任务分配的计算，计算能力不�
     - [Assignor](#assignor)
     - [Worker](#worker)
 - [Example](#example)
+    - [Simple](#simple)
+    - [Flexibility](#flexibility)
 
 ## Getting Started
 
@@ -88,6 +90,12 @@ type Worker interface {
 ```
 
 ## Example
+
+### Simple
+
+https://github.com/entertainment-venue/LRMF/blob/main/decoupling_test.go#L32
+
+### Flexibility
 
 ```
 type testTaskProvider struct{}
